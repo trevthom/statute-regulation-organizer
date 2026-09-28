@@ -24,15 +24,15 @@
 
   <main class="main">
     <div class="composer">
-      <label class="top" for="paste">Paste a section of a statute or regulation</label>
-      <textarea id="paste" placeholder="Paste one section here, e.g.&#10;§ 7-12. Rate filings&#10;(a) Every public utility shall ...&#10;    (1) ..."></textarea>
+      <label class="top" for="paste">Paste the statute or regulation text — the wording only</label>
+      <textarea id="paste" placeholder="Paste only the wording of the statute or regulation here. Do not include the section number, the section title, or the chapter heading — enter those in the fields below.&#10;&#10;Everything you paste is used as this section's text.&#10;&#10;e.g.&#10;(a) Every public utility shall file its rates with the authority.&#10;    (1) A filing must state the net income for the preceding year."></textarea>
       <div class="fields">
-        <label>Chapter (override)<input id="chNum" placeholder="auto"></label>
-        <label>Chapter title<input id="chTitle" placeholder="auto"></label>
-        <label>Section number<input id="secNum" placeholder="auto"></label>
-        <label>Section title<input id="secTitle" placeholder="auto"></label>
+        <label>Chapter *<input id="chNum" placeholder="e.g. 7" aria-required="true"></label>
+        <label>Chapter title *<input id="chTitle" placeholder="Public Utilities" aria-required="true"></label>
+        <label>Section number *<input id="secNum" placeholder="e.g. 7-12" aria-required="true"></label>
+        <label>Section title *<input id="secTitle" placeholder="Rate filings" aria-required="true"></label>
       </div>
-      <div class="detect" id="detect"></div>
+      <div class="hint" id="hint"></div>
       <div class="composer-row">
         <button type="button" class="primary" id="add">Add section</button>
         <span class="spacer"></span>

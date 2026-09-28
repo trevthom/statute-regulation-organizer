@@ -39,8 +39,43 @@ export function addSection(state, { chapterNumber, chapterTitle, number, title, 
   return { status: "added", chapter: ch, number };
 }
 
+/* Rename a chapter (its key/label, shown as "Chapter 7") and set its title.
+   The key must stay unique: renaming onto another chapter is rejected rather
+   than silently merging the two. */
+export function renameChapter(state, oldKey, newKey, title) {
+  const ch = state.chapters.find((c) => c.key === oldKey);
+  if (!ch) return { status: "missing" };
+  const key = String(newKey == null ? "" : newKey).trim();
+  if (!key) return { status: "invalid" };
+  if (key !== oldKey && state.chapters.some((c) => c.key === key)) return { status: "duplicate", key };
+  ch.key = key;
+  ch.title = String(title == null ? "" : title).trim();
+  if (state.activeKey === oldKey) state.activeKey = key;
+  return { status: "ok", chapter: ch };
+}
+
+/* Edit a section's number and title in place, after it is already in the list.
+   The number must stay unique within its chapter (same rule as adding) and the
+   chapter is re-sorted so the document order stays correct. */
+export function updateSection(state, id, { number, title }) {
+  for (const ch of state.chapters) {
+    const sec = ch.sections.find((s) => s.id === id);
+    if (!sec) continue;
+    const num = String(number == null ? "" : number).trim();
+    if (!num) return { status: "invalid" };
+    if (num !== sec.number && ch.sections.some((s) => s.number === num)) {
+      return { status: "duplicate", number: num, chapter: ch };
+    }
+    sec.number = num;
+    sec.title = String(title == null ? "" : title).trim();
+    ch.sections.sort((a, b) => naturalCmp(a.number, b.number));
+    return { status: "ok", chapter: ch, section: sec };
+  }
+  return { status: "missing" };
+}
+
 /* Remove a section by id. Exposed as a model primitive; the current UI does
-   not wire a delete control, so behavior is unchanged. */
+   not wire a delete control. */
 export function removeSection(state, chapterKey, id) {
   const ch = state.chapters.find((c) => c.key === chapterKey);
   if (!ch) return false;
@@ -72,7 +107,7 @@ export function sampleData() {
           },
           {
             id: uid(), number: "7-2", title: "Definitions",
-            body: "As used in this chapter:\n\u201CAuthority\u201D means the Department of Public Utilities.\n\u201CNet income\u201D means gross income less allowable deductions.\n\u201CCertificate of public convenience and necessity\u201D means an authorization issued under section 7-4."
+            body: "As used in this chapter:\n\u201CAuthority\u201D means the Department of Public Utilities.\n\u201CNet income\u201D means gross income less allowable deductions.\n\u201CCertificate of public convenience and necessity\u201D and \u201Ccertificate\u201D mean an authorization issued under section 7-4.\n\u201CRate\u201D means a charge set by the Authority for service rendered under a certificate."
           }
         ]
       },

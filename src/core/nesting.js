@@ -71,12 +71,20 @@ export function markerDepth(label, stack) {
 }
 
 /* Analyze a raw body into render instructions:
-   [{ type:"blank" } | { type:"clause", marker, text, depth }]
+   [{ type:"blank" } | { type:"clause", marker, text, depth, start }]
    The marker is sliced off by its matched length (never string-replaced), so a
-   clause marker is printed exactly once and cannot also appear in the body. */
+   clause marker is printed exactly once and cannot also appear in the body.
+   `start` is the offset of `text` within the body, which lets the renderer ask
+   location-aware questions (e.g. "is this match inside a different definition?"). */
 export function analyzeBody(body) {
   const lines = String(body).split("\n");
-  const entries = lines.map((l) => ({ text: l.replace(/^\s+/, ""), indent: indentOf(l) }));
+  const entries = [];
+  let offset = 0;
+  for (const line of lines) {
+    const lead = line.match(/^\s*/)[0];
+    entries.push({ text: line.slice(lead.length), indent: indentOf(line), textStart: offset + lead.length });
+    offset += line.length + 1;                 // +1 for the newline
+  }
   const nonEmpty = entries.filter((e) => e.text);
 
   let useIndent = false, unit = 0;
@@ -104,12 +112,15 @@ export function analyzeBody(body) {
     else depth = prevDepth;
     prevDepth = depth;
 
-    let marker = null, text = e.text;
+    let marker = null, text = e.text, start = e.textStart;
     if (mm) {
       marker = mm[1];
-      text = e.text.slice(mm[1].length).replace(/^\s+/, "");
+      const afterMarker = e.text.slice(mm[1].length);
+      const lead = afterMarker.match(/^\s*/)[0].length;
+      start = e.textStart + mm[1].length + lead;
+      text = afterMarker.slice(lead);
     }
-    out.push({ type: "clause", marker, text, depth });
+    out.push({ type: "clause", marker, text, depth, start });
   }
   return out;
 }
