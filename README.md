@@ -46,7 +46,7 @@ styles/app.css              Chrome / layout / sidebar / composer styles
 styles/doc.css              Document styles (screen + exported files, one source)
 src/main.js                 Bootstrap: load state, wire events, first render
 src/core/model.js           State mutations: add, rename chapter, update section, sort-on-add
-src/core/text.js            normalizeBody: newline/space cleanup applied on add
+src/core/text.js            normalizeBody: unwrap soft line wraps, repair hyphen splits, collapse spacing
 src/core/sort.js            naturalKey, naturalCmp
 src/core/definitions.js     definition units, term extraction, suppression, highlight runs
 src/core/nesting.js         indent/marker depth analysis plus clause body offsets
@@ -75,10 +75,11 @@ Everything under `src/core/**` is pure: no `document`, `window`, `localStorage`,
 ## Invariants
 
 - **Normalize once, then store raw.** `normalizeBody` runs on *Add section*
-  (CRLF → LF, hard spaces → spaces, tabs → spaces, interior space runs and
-  trailing whitespace trimmed, blank-line piles collapsed) and the result is
-  stored. Highlighting is never baked into stored state — it happens at render.
-  Indentation is preserved because clause nesting depends on it.
+  and the result is stored. It fixes formatting artifacts only — never wording,
+  punctuation, capitalization or citations — and joins soft line wraps back into
+  sentences (see *Text normalization*). Highlighting is never baked into stored
+  state; it happens at render. Indentation is preserved because clause nesting
+  depends on it.
 - **Definitions are chapter-wide.** On every render, `chapterDefinitions(chapter)`
   is computed from *all* sections and applied to *every* section, so a
   definitions section pasted later retroactively highlights earlier sections.
@@ -108,6 +109,40 @@ Everything under `src/core/**` is pure: no `document`, `window`, `localStorage`,
   export, so preview == export without a second copy and without an extra
   request. Keeping it synchronous means the download still happens inside the
   user's click.
+
+## Text normalization
+
+Pasting out of a PDF or a page brings CRLF newlines, hard spaces, stray tabs,
+runs of spaces, piles of blank lines and hard line wraps mid-sentence.
+`normalizeBody` (`src/core/text.js`) repairs the formatting without touching the
+wording, and **joins a single newline between two lines of ordinary prose into a
+space**. It does not simply replace every newline: a break is kept when either
+side of it looks intentional.
+
+Kept as a real break when:
+
+- either line is blank (paragraph break),
+- the previous line is a heading (ALL CAPS, or short and led by
+  Article/Section/Sec./Chapter/Part/Rule/Title/§),
+- the previous line ends in `. : ! ?` (end of a sentence or a lead-in),
+- the next line starts a numbered/lettered item or bullet
+  (`(a)`, `(12)`, `iv.`, `A.`, `•`, `-`, `§`),
+- the next line opens a quotation (a new definition entry),
+- the next line is indented deeper than the paste's base indent.
+
+A deeper-indented line *is* still joined when it plainly continues a sentence
+(it starts lowercase) — that is what a hanging indent looks like.
+
+A hyphen at the break is resolved rather than blindly deleted:
+
+- fragment is a word ending (`establish-` + `ment` → `establishment`,
+  `regula-` + `tion` → `regulation`) → the hyphen is dropped and the word glued;
+- otherwise the hyphen is a real compound hyphen and is kept
+  (`well-` + `known` → `well-known`, `state-` + `owned` → `state-owned`);
+- an invisible soft hyphen (`U+00AD`) is always removed.
+
+Excessive spaces are then collapsed (interior runs, trailing whitespace) and
+runs of blank lines are reduced to a single blank line.
 
 ## Definition extraction rules
 
@@ -140,9 +175,11 @@ node --test tests/core.test.js tests/dom.test.js
 ```
 
 - `tests/core.test.js` unit-tests the pure core: natural sorting
-  (`7-1 < 7-2 < 7-10`), normalization, multi-term and repeated definitions,
-  case-insensitive whole-word matching, the self-highlighting rule, clause depth
-  for indented and marker-only fixtures, and the add/rename/update mutations.
+  (`7-1 < 7-2 < 7-10`), normalization (soft wraps joined, paragraphs, headings,
+  numbering, bullets, indentation and hyphenated splits preserved, citations
+  untouched, idempotent), multi-term and repeated definitions, case-insensitive
+  whole-word matching, the self-highlighting rule, clause depth for indented and
+  marker-only fixtures, and the add/rename/update mutations.
 - `tests/dom.test.js` boots the real `src/main.js` against the real `index.html`
   through a tiny DOM shim and drives it like a user: required fields, wording-only
   paste, normalization, duplicate guards, inline editing of chapter and section,
@@ -157,6 +194,13 @@ node --test tests/core.test.js tests/dom.test.js
 - **Marker nesting is approximate** for single letters that are also Roman
   numerals (`c d i l m v x`). The predecessor/sequence-continuation logic
   disambiguates most cases but not all.
+- **Unwrapping has two known approximations.** A title-case heading sitting on
+  the very next line after prose (no blank line, not ALL CAPS, no structural
+  keyword) is indistinguishable from a wrapped line and gets joined; and a
+  hyphen split whose fragment is not a recognizable word ending
+  (`ex-pected`) keeps the hyphen instead of being glued, because guessing wrong
+  there would silently corrupt a real compound. Both are deliberately biased
+  toward not altering the wording.
 - **Exports are client-side downloads** (Blob + `<a download>`); one page cannot
   write sibling files on disk. The realistic upgrade is a tiny static/local
   server that writes one file per chapter.

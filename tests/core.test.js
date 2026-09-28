@@ -39,6 +39,80 @@ test("normalizeBody trims the paste and never joins lines", () => {
   assert.equal(normalizeBody("  \n\n  (a) one\n\n\n\n(b) two  \n\n  "), "(a) one\n\n(b) two");
 });
 
+/* ---------- soft line wraps ---------- */
+
+test("soft line wraps inside prose are joined with a space", () => {
+  assert.equal(
+    normalizeBody("The authority shall review each application\nwithin 60 days of receipt\nof a complete filing."),
+    "The authority shall review each application within 60 days of receipt of a complete filing.");
+});
+
+test("blank lines stay as paragraph breaks", () => {
+  assert.equal(normalizeBody("First line\nwraps here.\n\nSecond paragraph\nwraps too."),
+    "First line wraps here.\n\nSecond paragraph wraps too.");
+});
+
+test("a line that ends a sentence or a lead-in keeps its own line", () => {
+  assert.equal(normalizeBody("Every definition ends here.\nA charge is a fee."),
+    "Every definition ends here.\nA charge is a fee.");
+  assert.equal(normalizeBody("As used in this chapter:\nA charge is a fee."),
+    "As used in this chapter:\nA charge is a fee.");
+});
+
+test("a line opening a quotation starts a new definition entry", () => {
+  const input = "As used in this chapter\n\u201CBoard\u201D means the commission.";
+  assert.equal(normalizeBody(input), input);
+});
+
+test("headings, numbering and bullets keep their own lines", () => {
+  const input = [
+    "DEFINITIONS",
+    "As used in this chapter:",
+    "(a) The authority shall act",
+    "(1) and shall keep records",
+    "\u2022 a bullet",
+    "- another bullet",
+    "ARTICLE 5",
+    "The board shall act."
+  ].join("\n");
+  assert.equal(normalizeBody(input), input);
+});
+
+test("indented structure is preserved, a hanging indent is joined", () => {
+  const structured = "This chapter applies.\n    (1) A filing must state the net income.";
+  assert.equal(normalizeBody(structured), structured);
+  assert.equal(normalizeBody("(a) The authority shall act\n    Records shall be kept."),
+    "(a) The authority shall act\n    Records shall be kept.");
+  assert.equal(normalizeBody("(a) The authority shall act\n    on each application."),
+    "(a) The authority shall act on each application.");
+});
+
+test("a word split by a wrapped hyphen is rejoined", () => {
+  assert.equal(normalizeBody("The establish-\nment of the board."), "The establishment of the board.");
+  assert.equal(normalizeBody("Any regula-\ntion adopted under this chapter"), "Any regulation adopted under this chapter");
+});
+
+test("a real compound hyphen is kept", () => {
+  assert.equal(normalizeBody("a well-\nknown rule."), "a well-known rule.");
+  assert.equal(normalizeBody("a state-\nowned bank."), "a state-owned bank.");
+});
+
+test("an invisible soft hyphen is removed", () => {
+  assert.equal(normalizeBody("estab\u00ADlishment of the board"), "establishment of the board");
+  assert.equal(normalizeBody("estab\u00AD\nlishment"), "establishment");
+});
+
+test("normalization never rewrites wording, punctuation or citations", () => {
+  assert.equal(normalizeBody("See KRS 217.136  and  217.137;  42 U.S.C. \u00A7 1983."),
+    "See KRS 217.136 and 217.137; 42 U.S.C. \u00A7 1983.");
+});
+
+test("normalization is stable when applied twice", () => {
+  const messy = "The authority shall review each application\nwithin 60 days.\n\n(a) The board\n    shall act.";
+  const once = normalizeBody(messy);
+  assert.equal(normalizeBody(once), once);
+});
+
 /* ---------- definitions ---------- */
 
 test("a definition may define several quoted terms at once", () => {

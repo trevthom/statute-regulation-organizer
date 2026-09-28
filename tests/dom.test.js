@@ -242,3 +242,22 @@ test("clear all empties the document", async () => {
   assert.match($("sections").textContent, /No chapters yet/);
   assert.deepEqual(dom.savedState().chapters, []);
 });
+
+test("a soft-wrapped paste is unwrapped but keeps its structure", async () => {
+  await addSection({
+    chNum: "9", chTitle: "Wrapped", secNum: "9-1", secTitle: "Wrap test",
+    paste: "The authority shall review each application within 60 days\n" +
+      "of receipt of a complete filing. It shall then\n" +
+      "issue a decision.\n\n" +
+      "(a) The board shall act.\n" +
+      "    (1) Records shall be kept."
+  });
+
+  const stored = dom.savedState().chapters.find((c) => c.key === "9").sections[0].body;
+  assert.equal(stored,
+    "The authority shall review each application within 60 days of receipt of a complete filing. " +
+    "It shall then issue a decision.\n\n" +
+    "(a) The board shall act.\n" +
+    "    (1) Records shall be kept.",
+    "prose wraps joined, paragraph break and indented item kept");
+});
