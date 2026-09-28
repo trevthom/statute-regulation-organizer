@@ -32,7 +32,7 @@ input,textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(-
 .fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-top:.6rem}
 .fields label{font-size:.7rem;color:var(--muted);display:block}
 .fields input{font-size:.85rem;padding:.35rem .45rem}
-.detect{font-size:.74rem;color:var(--muted);margin-top:.5rem;min-height:1.1em}
+.hint{font-size:.74rem;color:var(--muted);margin-top:.5rem;min-height:1.1em}
 .composer-row{display:flex;gap:.9rem;align-items:center;flex-wrap:wrap;margin-top:.6rem}
 .composer-row .spacer{flex:1}
 .doc{padding:1.4rem 1.6rem 3rem;max-width:60rem;width:100%}
@@ -40,4 +40,26 @@ input,textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(-
 #toast{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);background:#2a2620;color:#fff;
        padding:.55rem .9rem;border-radius:8px;font-size:.86rem;opacity:0;pointer-events:none;transition:opacity .18s;z-index:50}
 #toast.show{opacity:1}
+/* ---------- inline editing ---------- */
+.chap-row{display:flex;align-items:flex-start;gap:.2rem;margin-bottom:2px}
+.chap-row .chap-btn{flex:1;min-width:0;margin-bottom:0}
+button.mini{flex:0 0 auto;background:transparent;border-color:transparent;border-radius:5px;
+            font-size:.72rem;padding:.2rem .35rem;opacity:.5}
+button.mini:hover{opacity:1;background:rgba(255,255,255,.09)}
+.sect-head-row{display:flex;align-items:baseline;gap:.45rem}
+.sect-head-row button.mini{color:var(--muted)}
+.sect-head-row button.mini:hover{background:#f6f3ee;color:var(--ink)}
+.edit-form{display:grid;gap:.45rem;background:#faf8f4;border:1px solid var(--line);
+           border-radius:8px;padding:.6rem .65rem;margin:.3rem 0 .6rem}
+.edit-field{display:grid;gap:.15rem}
+.edit-label{font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.edit-input{font-size:.85rem;padding:.3rem .4rem}
+.edit-actions{display:flex;gap:.4rem}
+.edit-actions button{font-size:.8rem;padding:.3rem .55rem}
+.sidebar .edit-form{background:#2b2620;border-color:#443d32;margin:.25rem 0 .5rem}
+.sidebar .edit-label{color:#a49c8f}
+.sidebar .edit-input{background:#1c1a17;border-color:#443d32;color:#eae5db}
+.sidebar .edit-actions button{background:#2f2a22;border-color:#443d32;color:#eae5db}
+.sidebar .edit-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+
 @media (max-width:720px){.fields{grid-template-columns:1fr 1fr}.sidebar{flex-basis:12rem;width:12rem}}

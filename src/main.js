@@ -8,20 +8,17 @@ import { initEvents } from "./ui/events.js";
 const saved = load();
 let state = (saved && Array.isArray(saved.chapters)) ? saved : emptyState();
 
-function render() {
-  renderActive(state, selectChapter);
-}
+/* UI-only state, never persisted: which inline editor is open, if any. */
+const view = { editing: null };
 
-function selectChapter(key) {
-  state.activeKey = key;
-  save(state);
-  render();
-}
-
-initEvents({
+const app = {
   getState: () => state,
   setState: (next) => { state = next; },
-  render
-});
+  getView: () => view,
+  save: () => save(state),
+  render: () => renderActive(state, view, handlers)
+};
 
-render();
+const handlers = initEvents(app);
+
+app.render();

@@ -87,8 +87,12 @@ class Element {
     return old;
   }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+  focus() { globalThis.document.activeElement = this; }
   addEventListener(type, fn) { (this._listeners[type] || (this._listeners[type] = [])).push(fn); }
-  dispatch(type) { return (this._listeners[type] || []).slice().map((fn) => fn({ type, target: this })); }
+  dispatch(type, extra) {
+    const event = { type, target: this, preventDefault() {}, ...extra };
+    return (this._listeners[type] || []).slice().map((fn) => fn(event));
+  }
   click() { if (this.tagName === "A") downloads.push({ href: this.href, download: this.download }); }
   get outerHTML() {
     const tag = this.tagName.toLowerCase();

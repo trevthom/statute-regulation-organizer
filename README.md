@@ -1,9 +1,9 @@
 # Chapter Builder
 
-Paste sections of statutes/regulations and get one clean, sorted HTML "document"
-per chapter — with automatic highlighting of defined terms and automatic clause
-nesting. Vanilla JavaScript, ES modules, **no framework, no bundler, no npm, no
-build step**.
+Paste the wording of statutes/regulations and get one clean, sorted HTML
+"document" per chapter — with automatic highlighting of defined terms and
+automatic clause nesting. Vanilla JavaScript, ES modules, **no framework, no
+bundler, no npm, no build step**.
 
 ## Run it
 
@@ -21,6 +21,23 @@ Other equivalents: `npx serve .`, `php -S localhost:8000`, or any static host.
 > imports are blocked. If you need a double-clickable file, you must add a
 > separate legacy single-file build; this project intentionally has none.
 
+## Using it
+
+- **Chapter, chapter title, section number and section title are entered by
+  hand** and all four are required. The paste box takes *only* the wording of
+  the statute or regulation — no section number, no section title, no chapter
+  heading. Nothing is detected or parsed out of the paste; all of it is stored
+  as this section's text.
+- The paste is cleaned up on **Add section** (see *Normalization* below).
+- **Edit a chapter** with the *Edit* button next to it in the sidebar — that
+  renames the chapter (e.g. `7` → `7A`) and changes its title.
+- **Edit a section** with the *Edit* button on its heading — that changes its
+  number and title. The chapter re-sorts automatically, so the document order
+  stays correct.
+- **Enter** saves an inline editor, **Escape** (or *Cancel*) discards it.
+- A rename that would collide with an existing chapter or section number is
+  refused with a message, and the editor stays open so it can be fixed.
+
 ## Layout
 
 ```
@@ -28,15 +45,15 @@ index.html                  App shell: markup + <script type="module" src="src/m
 styles/app.css              Chrome / layout / sidebar / composer styles
 styles/doc.css              Document styles (screen + exported files, one source)
 src/main.js                 Bootstrap: load state, wire events, first render
-src/core/model.js           State mutations: add section, duplicate check, remove, sort-on-add
-src/core/parse.js           parseSection, CHAPTER_RE, SECTION_RE
+src/core/model.js           State mutations: add, rename chapter, update section, sort-on-add
+src/core/text.js            normalizeBody: newline/space cleanup applied on add
 src/core/sort.js            naturalKey, naturalCmp
-src/core/definitions.js     isDefinitionSection, extractTerms, chapterDefinitions, buildTermRegex
-src/core/nesting.js         indent/marker depth analysis (isRoman, romanVal, markerDepth, predecessor, analyzeBody)
-src/ui/render.js            All DOM building: sidebar, chapter, section, body; highlightTerms
+src/core/definitions.js     definition units, term extraction, suppression, highlight runs
+src/core/nesting.js         indent/marker depth analysis plus clause body offsets
+src/ui/render.js            All DOM building: sidebar, chapter, section, body, editors
 src/ui/events.js            All addEventListener wiring
 src/storage/local.js        load/save + STORE_KEY
-src/export/html.js          exportChapter + download; inlines doc.css into a standalone HTML file
+src/export/html.js          exportChapter + download; inlines doc.css into standalone HTML
 tests/core.test.js          Node tests against the pure core/ modules
 tests/dom.test.js           Headless end-to-end test (real modules + real index.html)
 tests/dom-shim.js           Minimal DOM shim so the UI layer runs in Node
@@ -53,23 +70,35 @@ ui/render -> core        export -> core (and -> ui/render, for the shared page m
 
 Everything under `src/core/**` is pure: no `document`, `window`, `localStorage`,
 `Blob`, or `URL`. Only `src/ui/*`, `src/storage/local.js`, and
-`src/export/html.js` touch browser APIs. `src/export/html.js` reuses
-`renderChapterContent` from `ui/render.js` so the export and the on-screen
-preview come from exactly one markup implementation.
+`src/export/html.js` touch browser APIs.
 
 ## Invariants
 
-- **`body` is stored raw.** Highlighting happens at render time; highlighted HTML
-  is never persisted.
+- **Normalize once, then store raw.** `normalizeBody` runs on *Add section*
+  (CRLF → LF, hard spaces → spaces, tabs → spaces, interior space runs and
+  trailing whitespace trimmed, blank-line piles collapsed) and the result is
+  stored. Highlighting is never baked into stored state — it happens at render.
+  Indentation is preserved because clause nesting depends on it.
 - **Definitions are chapter-wide.** On every render, `chapterDefinitions(chapter)`
   is computed from *all* sections and applied to *every* section, so a
   definitions section pasted later retroactively highlights earlier sections.
   Insertion order is irrelevant.
+- **A defining section does not highlight its own definitions.** Inside the
+  section that defines a term, that term is suppressed — *except* where it
+  appears inside a **different** definition in the same section. So in
+  `"Authority" means the board.` / `"Fee" means a charge set by the Authority.`,
+  the first `Authority` stays plain and the second is highlighted.
+- **Matching is case-insensitive but whole-word.** Statutes define `"Bread"` and
+  then write `bread`; both highlight. `breadth` and `breads` do not.
 - **A clause marker is printed once.** `(a)`, `(32)`, … is rendered as a bold
   label and sliced off the body by matched length (not by string replace), which
   fixes the old double-numbering bug.
+- **Highlighting is built from the raw text, not by walking text nodes**, so a
+  per-match decision (own definition or not) is possible and no term can be lost
+  at a text-node boundary.
 - **Pasted text is never `innerHTML`.** It renders through `textContent` / text
-  nodes. HTML escaping exists only for the export template.
+  nodes; HTML escaping exists only for the export template. Editor chrome is
+  rendered only on screen, so exports stay clean.
 - **Nesting follows the source.** Real leading whitespace wins
   (`depth = round((indent − base) / unit)`, `unit = gcd` of positive indents and
   must be `≥ 2`). Only when the paste has no usable indentation does it fall back
@@ -80,6 +109,28 @@ preview come from exactly one markup implementation.
   request. Keeping it synchronous means the download still happens inside the
   user's click.
 
+## Definition extraction rules
+
+A **definition unit** is one clause (split on `. ; : ! ?` and newlines) that
+contains a definitional verb (`means`, `shall mean`, `mean`, `includes`,
+`include`, `refers to`, `has the meaning`). Every *quoted* phrase that appears
+**before** that verb in the same clause is a defined term, so:
+
+```
+"Bread" and "enriched bread" mean only the foods commonly known ...
+```
+
+yields both `Bread` and `enriched bread`. A later clause in the same section can
+define the same term again, and becomes its own unit:
+
+```
+For the purposes of KRS 217.136 and 217.137, "bread" or "enriched bread" also means ...
+```
+
+Quotes must be paired (`"…"`, `“…”`, `‘…’`); a lone apostrophe is never treated
+as an opening quote. Sections whose title contains "definition", or which have
+two or more units, additionally pick up unquoted `Capitalized X means` forms.
+
 ## Tests
 
 Node's built-in test runner, no dependencies:
@@ -89,31 +140,34 @@ node --test tests/core.test.js tests/dom.test.js
 ```
 
 - `tests/core.test.js` unit-tests the pure core: natural sorting
-  (`7-1 < 7-2 < 7-10`), parsing, definition extraction, chapter-wide highlighting
-  regardless of insertion order, and clause depth for both indented and
-  marker-only fixtures.
+  (`7-1 < 7-2 < 7-10`), normalization, multi-term and repeated definitions,
+  case-insensitive whole-word matching, the self-highlighting rule, clause depth
+  for indented and marker-only fixtures, and the add/rename/update mutations.
 - `tests/dom.test.js` boots the real `src/main.js` against the real `index.html`
-  through a tiny DOM shim and drives it like a user: load sample, paste and add
-  sections, reject duplicates, check nesting, export a chapter, export all. It is
-  a smoke test, not a browser — it does not render pixels.
+  through a tiny DOM shim and drives it like a user: required fields, wording-only
+  paste, normalization, duplicate guards, inline editing of chapter and section,
+  Enter/Escape, sample loading, highlighting rules, and export. It is a smoke
+  test, not a browser — it does not render pixels.
 
 ## Known limitations / dev notes
 
-- **Exported CSS is the browser's CSSOM serialization** of `styles/doc.css`
-  (comments dropped, whitespace normalized) rather than the raw file bytes. It
-  is the same stylesheet the screen uses, so the export is styled identically;
-  if you ever need byte-identical CSS in exports, switch `docCss()` in
-  `src/export/html.js` to `fetch()` the file (that makes export asynchronous).
-- **ES modules need a server.** See *Run it* above; `file://` cannot load modules.
-- **Definition extraction is heuristic.** Quoted `"X" means/includes` or
-  capitalized `X means` only. It will miss valid forms and can produce false
-  positives; the extractor is kept conservative. A manual review/edit path would
-  be the next improvement.
+- **Definition extraction is heuristic.** It will miss valid forms and can
+  produce false positives (for example a quoted phrase followed by "includes" in
+  ordinary prose). Keep it conservative, or add a manual review/edit path.
 - **Marker nesting is approximate** for single letters that are also Roman
   numerals (`c d i l m v x`). The predecessor/sequence-continuation logic
   disambiguates most cases but not all.
 - **Exports are client-side downloads** (Blob + `<a download>`); one page cannot
   write sibling files on disk. The realistic upgrade is a tiny static/local
   server that writes one file per chapter.
+- **Exported CSS is the browser's CSSOM serialization** of `styles/doc.css`
+  (comments dropped, whitespace normalized) rather than the raw file bytes. It
+  is the same stylesheet the screen uses, so the export is styled identically;
+  if you ever need byte-identical CSS in exports, switch `docCss()` in
+  `src/export/html.js` to `fetch()` the file (that makes export asynchronous).
+- **All four fields are required on every add**, including the chapter and
+  chapter title when the chapter already exists. That is deliberate, but if
+  retyping the chapter for each section gets tedious, pre-filling those two
+  fields from the active chapter is the obvious relaxation.
 - **Storage schema is versioned** by the centralized `STORE_KEY`. Bump the
   version and add a migration in `load()` when the shape changes.
