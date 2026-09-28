@@ -1,0 +1,43 @@
+/* App chrome: layout, sidebar, composer, toast.
+   Theme tokens (--bg, --ink, --muted, --line, --accent) live in styles/doc.css. */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button{font:inherit;cursor:pointer;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.42rem .7rem;color:inherit}
+button:hover{background:#f6f3ee}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:#701616}
+input,textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.45rem .55rem;width:100%}
+.app{display:flex;min-height:100vh}
+.sidebar{flex:0 0 16.5rem;width:16.5rem;background:#221f19;color:#eae5db;padding:1rem .8rem 2rem;
+         position:sticky;top:0;height:100vh;overflow:auto}
+.brand{font-weight:700}
+.brand span{display:block;font-weight:400;font-size:.76rem;color:#a49c8f}
+.sidebar h2{font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:#a49c8f;margin:1.3rem .35rem .5rem}
+.chap-btn{display:block;width:100%;text-align:left;background:transparent;border:0;color:inherit;
+          padding:.5rem .55rem;border-radius:6px;line-height:1.3;margin-bottom:2px}
+.chap-btn:hover{background:#322d25}
+.chap-btn.active{background:var(--accent);color:#fff}
+.chap-btn .cn{float:right;font-size:.72rem;opacity:.65}
+.chap-btn .cl{font-weight:600;font-size:.9rem}
+.chap-btn .ct{display:block;font-size:.76rem;opacity:.72}
+.sidebar .empty{color:#8f887c;font-size:.8rem;padding:.3rem .55rem;line-height:1.45}
+.side-actions{margin-top:1.4rem;display:flex;gap:.4rem;flex-wrap:wrap}
+.side-actions button{background:#2f2a22;border-color:#443d32;color:#eae5db;font-size:.8rem;padding:.35rem .55rem}
+.side-actions button:hover{background:#3b352b}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.composer{background:#fff;border-bottom:1px solid var(--line);padding:1rem 1.15rem .9rem}
+.composer label.top{display:block;font-size:.78rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)}
+#paste{min-height:8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+.fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-top:.6rem}
+.fields label{font-size:.7rem;color:var(--muted);display:block}
+.fields input{font-size:.85rem;padding:.35rem .45rem}
+.detect{font-size:.74rem;color:var(--muted);margin-top:.5rem;min-height:1.1em}
+.composer-row{display:flex;gap:.9rem;align-items:center;flex-wrap:wrap;margin-top:.6rem}
+.composer-row .spacer{flex:1}
+.doc{padding:1.4rem 1.6rem 3rem;max-width:60rem;width:100%}
+.empty-note{color:var(--muted)}
+#toast{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%);background:#2a2620;color:#fff;
+       padding:.55rem .9rem;border-radius:8px;font-size:.86rem;opacity:0;pointer-events:none;transition:opacity .18s;z-index:50}
+#toast.show{opacity:1}
+@media (max-width:720px){.fields{grid-template-columns:1fr 1fr}.sidebar{flex-basis:12rem;width:12rem}}

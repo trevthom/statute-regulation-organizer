@@ -1,0 +1,16 @@
+/* Document styles — the single source of truth for exported chapter files.
+   The screen links this file in <head>, and src/export/html.js inlines it
+   into every exported chapter so preview == export. */
+:root{ --bg:#efece6; --ink:#1c1a17; --muted:#6f675d; --line:#ddd6ca; --accent:#8a1c1c; --hl:#ffe9a8; }
+.doc .page{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:2rem 2.4rem; max-width:52rem; }
+.doc .chapter-head{ margin:0 0 .2rem; font-size:1.1rem; color:var(--ink); }
+.doc .chapter-sub{ color:var(--muted); font-size:.85rem; margin:0 0 1.6rem; }
+.doc .sect{ margin:0 0 1.2rem; }
+.doc .sect-head{ font-size:15px; margin:.2rem 0 .5rem; color:var(--ink); }
+.doc .sect-body{ }
+.doc .clause{ margin:.2rem 0; }
+.doc .clause-num{ font-weight:700; margin-right:.35rem; }
+.doc .blank{ height:.55rem; }
+mark.term{ background:var(--hl); color:inherit; border-radius:3px; padding:0 2px; }
+.doc-export{ background:#efece6; margin:0; padding:2.5rem 1rem; }
+.doc-export .page{ margin:0 auto; }
