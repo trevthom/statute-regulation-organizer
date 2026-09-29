@@ -146,7 +146,10 @@ export function installDom() {
 
   const ids = [...readFileSync(new URL("../index.html", import.meta.url), "utf8")
     .matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-  const tags = { paste: "textarea", chNum: "input", chTitle: "input", secNum: "input", secTitle: "input" };
+  const tags = {
+    paste: "textarea", jurisdiction: "select", chNum: "input", chTitle: "input",
+    secNum: "input", secTitle: "input", parts: "div"
+  };
   for (const id of ids) document.register(id, tags[id]);
 
   globalThis.document = document;

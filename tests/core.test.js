@@ -9,7 +9,11 @@ import {
   buildTermRegex, chapterDefinitions, definitionUnits, highlightRuns, sectionTerms, termSuppressor
 } from "../src/core/definitions.js";
 import { analyzeBody } from "../src/core/nesting.js";
-import { addSection, currentChapter, emptyState, renameChapter, updateSection } from "../src/core/model.js";
+import {
+  ANCHOR, UNKNOWN, addJurisdiction, addSection, chapterNumber, chaptersInOrder, currentChapter,
+  emptyState, findJurisdiction, normalizeParts, partPath, sortedJurisdictions, updateChapter,
+  updateJurisdiction, updateSection
+} from "../src/core/model.js";
 
 /* ---------- sorting ---------- */
 
@@ -224,46 +228,125 @@ test("each clause reports where its text starts in the body", () => {
   }
 });
 
+/* ---------- jurisdictions ---------- */
+
+const addFed = (state, parts, number, extra = {}) => addSection(state, {
+  jurisdiction: "federal", partValues: parts, number, body: "b", ...extra
+});
+
+test("emptyState seeds a single Federal jurisdiction with an ordered organization", () => {
+  const state = emptyState();
+  assert.deepEqual(state.chapters, []);
+  assert.deepEqual(
+    state.jurisdictions.map((j) => [j.key, j.kind, j.parts]),
+    [["federal", "federal", ["Title", "Chapter", "Subchapter", "Part"]]]);
+});
+
+test("normalizeParts trims, de-duplicates case-insensitively and keeps the Chapter anchor", () => {
+  assert.deepEqual(normalizeParts(["Title", " Chapter ", "title", ""]), ["Title", "Chapter"]);
+  assert.deepEqual(normalizeParts(["Subchapter"]), ["Subchapter", "Chapter"], "Chapter is appended when missing");
+  assert.deepEqual(normalizeParts([]), ["Chapter"]);
+});
+
+test("addJurisdiction slugifies the name, refuses duplicates and keeps the key stable", () => {
+  const state = emptyState();
+  assert.equal(addJurisdiction(state, { name: "Kentucky", kind: "state", parts: [] }).status, "ok");
+  assert.deepEqual(findJurisdiction(state, "kentucky").parts, ["Chapter"]);
+  assert.equal(addJurisdiction(state, { name: "Kentucky", kind: "state" }).status, "duplicate");
+  assert.equal(addJurisdiction(state, { name: "   ", kind: "state" }).status, "invalid");
+});
+
+test("updateJurisdiction reorders parts and keeps the key while the name changes", () => {
+  const state = emptyState();
+  const result = updateJurisdiction(state, "federal", {
+    name: "United States", kind: "federal", parts: ["Part", "Subchapter", "Chapter", "Title"]
+  });
+  assert.equal(result.status, "ok");
+  const j = findJurisdiction(state, "federal");
+  assert.equal(j.name, "United States");
+  assert.deepEqual(j.parts, ["Part", "Subchapter", "Chapter", "Title"]);
+  assert.equal(updateJurisdiction(state, "federal", { name: "", kind: "federal" }).status, "invalid");
+  assert.equal(updateJurisdiction(state, "nope", { name: "x" }).status, "missing");
+});
+
+test("jurisdictions list Federal first, then states alphabetically", () => {
+  const state = emptyState();
+  addJurisdiction(state, { name: "Wyoming", kind: "state" });
+  addJurisdiction(state, { name: "Alabama", kind: "state" });
+  assert.deepEqual(sortedJurisdictions(state).map((j) => j.name), ["Federal", "Alabama", "Wyoming"]);
+});
+
 /* ---------- state mutations ---------- */
 
-test("addSection sorts on add, rejects duplicates and creates the chapter", () => {
+test("addSection needs only the chapter and section number", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "Public Utilities", number: "7-10", title: "Ten", body: "b" });
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-2", title: "Two", body: "b" });
+  assert.equal(addFed(state, { Chapter: "" }, "1").status, "invalid");
+  assert.equal(addFed(state, { Chapter: "7" }, "").status, "invalid");
+  assert.equal(state.chapters.length, 0);
+});
 
+test("blank chapter and section titles default to UNKNOWN", () => {
+  const state = emptyState();
+  const r = addFed(state, { Chapter: "7" }, "7-1", { chapterTitle: "  ", title: "" });
+  assert.equal(r.status, "added");
+  assert.equal(r.chapter.title, UNKNOWN);
+  assert.equal(r.chapter.sections[0].title, UNKNOWN);
+  assert.equal(chapterNumber(r.chapter), "7");
+  assert.equal(state.activeId, r.chapter.id);
+});
+
+test("addSection sorts on add, backfills the chapter title and rejects duplicates", () => {
+  const state = emptyState();
+  addFed(state, { Chapter: "7" }, "7-10", { chapterTitle: "Public Utilities", title: "Ten" });
+  addFed(state, { Chapter: "7" }, "7-2", { title: "Two" });
+
+  assert.equal(state.chapters.length, 1);
   assert.deepEqual(state.chapters[0].sections.map((s) => s.number), ["7-2", "7-10"]);
   assert.equal(state.chapters[0].title, "Public Utilities");
-  assert.equal(state.activeKey, "7");
 
-  const dup = addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-2", title: "Dup", body: "b" });
+  const dup = addFed(state, { Chapter: "7" }, "7-2", { title: "Dup" });
   assert.equal(dup.status, "duplicate");
   assert.equal(state.chapters[0].sections.length, 2);
 });
 
-test("renameChapter renames, retitles and follows the active key", () => {
+test("federal chapters with different organization paths stay distinct and merge by path", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "Public Utilities", number: "7-1", title: "T", body: "b" });
+  addFed(state, { Title: "42", Chapter: "21", Subchapter: "IV" }, "1983");
+  addFed(state, { Title: "42", Chapter: "21", Subchapter: "I" }, "1983");
+  assert.equal(state.chapters.length, 2, "same chapter number under different paths is a different chapter");
 
-  assert.equal(renameChapter(state, "7", "7A", "Utilities").status, "ok");
-  assert.equal(state.chapters[0].key, "7A");
-  assert.equal(state.chapters[0].title, "Utilities");
-  assert.equal(state.activeKey, "7A");
+  addFed(state, { Title: "42", Chapter: "21", Subchapter: "IV" }, "1985");
+  assert.equal(state.chapters.length, 2, "the matching path merges");
+
+  const j = findJurisdiction(state, "federal");
+  assert.deepEqual(chaptersInOrder(state, "federal").map((c) => partPath(j, c.partValues)), [
+    "Title 42 \u00b7 Chapter 21 \u00b7 Subchapter I",
+    "Title 42 \u00b7 Chapter 21 \u00b7 Subchapter IV"
+  ]);
 });
 
-test("renameChapter rejects a collision or an empty name", () => {
+test("updateChapter edits the organization and title, refusing a blank number or a collision", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-1", title: "", body: "b" });
-  addSection(state, { chapterNumber: "12", chapterTitle: "", number: "12-1", title: "", body: "b" });
+  addFed(state, { Chapter: "7" }, "7-1");
+  const id = state.chapters[0].id;
 
-  assert.equal(renameChapter(state, "7", "12", "clash").status, "duplicate");
-  assert.equal(renameChapter(state, "7", "   ", "x").status, "invalid");
-  assert.deepEqual(state.chapters.map((c) => c.key), ["7", "12"]);
+  assert.equal(updateChapter(state, id, { partValues: { Chapter: "7A" }, title: "Utilities" }).status, "ok");
+  assert.equal(chapterNumber(state.chapters[0]), "7A");
+  assert.equal(state.chapters[0].title, "Utilities");
+  assert.equal(updateChapter(state, id, { partValues: { Chapter: "  " }, title: "x" }).status, "invalid");
+  assert.equal(updateChapter(state, id, { partValues: { Chapter: "7A" }, title: "" }).status, "ok");
+  assert.equal(state.chapters[0].title, UNKNOWN, "a blank title falls back to UNKNOWN");
+
+  addFed(state, { Chapter: "12" }, "12-1");
+  const other = state.chapters.find((c) => chapterNumber(c) === "12").id;
+  assert.equal(updateChapter(state, other, { partValues: { Chapter: "7A" }, title: "clash" }).status, "duplicate");
+  assert.equal(updateChapter(state, "missing-id", { partValues: { Chapter: "1" }, title: "" }).status, "missing");
 });
 
 test("updateSection edits the number and title and re-sorts the chapter", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-10", title: "Ten", body: "b" });
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-1", title: "One", body: "b" });
+  addFed(state, { Chapter: "7" }, "7-10", { title: "Ten" });
+  addFed(state, { Chapter: "7" }, "7-1", { title: "One" });
 
   const id = state.chapters[0].sections.find((s) => s.number === "7-10").id;
   assert.equal(updateSection(state, id, { number: "7-2", title: "Two" }).status, "ok");
@@ -273,8 +356,8 @@ test("updateSection edits the number and title and re-sorts the chapter", () => 
 
 test("updateSection rejects an empty number or a duplicate", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-1", title: "One", body: "b" });
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-2", title: "Two", body: "b" });
+  addFed(state, { Chapter: "7" }, "7-1");
+  addFed(state, { Chapter: "7" }, "7-2");
 
   const id = state.chapters[0].sections.find((s) => s.number === "7-2").id;
   assert.equal(updateSection(state, id, { number: "7-1", title: "clash" }).status, "duplicate");
@@ -282,13 +365,15 @@ test("updateSection rejects an empty number or a duplicate", () => {
   assert.deepEqual(state.chapters[0].sections.map((s) => s.number), ["7-1", "7-2"]);
 });
 
-test("currentChapter prefers activeKey then the first chapter", () => {
+test("currentChapter follows activeId then falls back to the first chapter", () => {
   const state = emptyState();
-  addSection(state, { chapterNumber: "7", chapterTitle: "", number: "7-1", title: "", body: "b" });
-  addSection(state, { chapterNumber: "12", chapterTitle: "", number: "12-1", title: "", body: "b" });
-  state.activeKey = "7";
-  assert.equal(currentChapter(state).key, "7");
-  state.activeKey = null;
-  assert.equal(currentChapter(state).key, "7");
+  addFed(state, { Chapter: "7" }, "7-1");
+  addFed(state, { Chapter: "12" }, "12-1");
+  const seven = state.chapters.find((c) => chapterNumber(c) === "7");
+
+  state.activeId = seven.id;
+  assert.equal(chapterNumber(currentChapter(state)), "7");
+  state.activeId = "gone";
+  assert.equal(chapterNumber(currentChapter(state)), "7");
   assert.equal(currentChapter(emptyState()), null);
 });

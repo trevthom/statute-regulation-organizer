@@ -7,13 +7,19 @@ button{font:inherit;cursor:pointer;background:#fff;border:1px solid var(--line);
 button:hover{background:#f6f3ee}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button.primary:hover{background:#701616}
-input,textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.45rem .55rem;width:100%}
+input,textarea,select{font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.45rem .55rem;width:100%}
 .app{display:flex;min-height:100vh}
 .sidebar{flex:0 0 16.5rem;width:16.5rem;background:#221f19;color:#eae5db;padding:1rem .8rem 2rem;
          position:sticky;top:0;height:100vh;overflow:auto}
 .brand{font-weight:700}
 .brand span{display:block;font-weight:400;font-size:.76rem;color:#a49c8f}
 .sidebar h2{font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:#a49c8f;margin:1.3rem .35rem .5rem}
+.jur-group{margin-bottom:.95rem}
+.jur-head{display:flex;align-items:center;gap:.35rem;padding:.1rem .3rem;margin-bottom:.15rem}
+.jur-name{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:#cec7ba;font-weight:700}
+.jur-tag{font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:#a49c8f;border:1px solid #4a4336;border-radius:999px;padding:.05rem .35rem}
+.jur-head button.mini{margin-left:auto}
+.jur-group .empty{margin:.1rem .55rem .3rem;padding:0}
 .chap-btn{display:block;width:100%;text-align:left;background:transparent;border:0;color:inherit;
           padding:.5rem .55rem;border-radius:6px;line-height:1.3;margin-bottom:2px}
 .chap-btn:hover{background:#322d25}
@@ -29,9 +35,13 @@ input,textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(-
 .composer{background:#fff;border-bottom:1px solid var(--line);padding:1rem 1.15rem .9rem}
 .composer label.top{display:block;font-size:.78rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)}
 #paste{min-height:8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;overflow-wrap:normal;overflow-x:auto}
-.fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-top:.6rem}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.5rem;margin-top:.6rem}
 .fields label{font-size:.7rem;color:var(--muted);display:block}
-.fields input{font-size:.85rem;padding:.35rem .45rem}
+.fields input,.fields select{font-size:.85rem;padding:.35rem .45rem}
+.part-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.5rem;margin-top:.5rem}
+.part-fields:empty{display:none}
+.part-field{display:grid;gap:.15rem;font-size:.7rem;color:var(--muted)}
+.part-field .part-input{font-size:.85rem;padding:.35rem .45rem}
 .hint{font-size:.74rem;color:var(--muted);margin-top:.5rem;min-height:1.1em}
 .composer-row{display:flex;gap:.9rem;align-items:center;flex-wrap:wrap;margin-top:.6rem}
 .composer-row .spacer{flex:1}
@@ -61,5 +71,11 @@ button.mini:hover{opacity:1;background:rgba(255,255,255,.09)}
 .sidebar .edit-input{background:#1c1a17;border-color:#443d32;color:#eae5db}
 .sidebar .edit-actions button{background:#2f2a22;border-color:#443d32;color:#eae5db}
 .sidebar .edit-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.part-list{display:grid;gap:.25rem;margin:.15rem 0 .1rem}
+.part-row{display:flex;align-items:center;gap:.3rem}
+.part-row .part-name{flex:1;font-size:.78rem;color:#d8d2c6}
+.part-row .edit-input{flex:1}
+.part-row button.mini{border-color:#443d32;color:#eae5db;opacity:.75}
+.part-row button.mini:hover{opacity:1}
 
-@media (max-width:720px){.fields{grid-template-columns:1fr 1fr}.sidebar{flex-basis:12rem;width:12rem}}
+@media (max-width:720px){.sidebar{flex-basis:12rem;width:12rem}}
