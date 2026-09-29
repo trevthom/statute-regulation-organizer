@@ -57,25 +57,33 @@ export function predecessor(s) {
   return null;
 }
 
+/* Depth of a marker, counted from the outermost marker sequence in this body:
+   the first marker is depth 0, a marker nested inside it is depth 1, and so on,
+   so a clause sitting directly under the prose is never indented and each
+   further level is indented one more step. */
 export function markerDepth(label, stack) {
   const inner = label.replace(/[()]/g, "").replace(/[.)]$/, "");
   const seen = stack.lastIndexOf(inner);            /* exact repeat -> pop back to it */
-  if (seen !== -1) { stack.length = seen + 1; return seen + 1; }
+  if (seen !== -1) { stack.length = seen + 1; return seen; }
   const pred = predecessor(inner);                  /* sequence continuation -> same level */
   if (pred !== null) {
     const pi = stack.lastIndexOf(pred);
-    if (pi !== -1) { stack.length = pi + 1; stack[pi] = inner; return pi + 1; }
+    if (pi !== -1) { stack.length = pi + 1; stack[pi] = inner; return pi; }
   }
   stack.push(inner);                                /* first appearance -> one deeper */
-  return stack.length;
+  return stack.length - 1;
 }
 
 /* Analyze a raw body into render instructions:
    [{ type:"blank" } | { type:"clause", marker, text, depth, start }]
    The marker is sliced off by its matched length (never string-replaced), so a
-   clause marker is printed exactly once and cannot also appear in the body.
-   `start` is the offset of `text` within the body, which lets the renderer ask
-   location-aware questions (e.g. "is this match inside a different definition?"). */
+   clause marker is printed exactly once and cannot also appear in the body.   `start` is the offset of `text` within the body, which lets the renderer ask
+   location-aware questions (e.g. "is this match inside a different
+   definition?").
+
+   `depth` is the indentation step: 0 is a clause sitting in the body's own
+   margin, 1 is a subclause inside it, 2 a subclause inside that one, and so on.
+   The renderer indents one step per unit of depth. */
 export function analyzeBody(body) {
   const lines = String(body).split("\n");
   const entries = [];

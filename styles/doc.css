@@ -9,7 +9,7 @@
 .doc .sect-head{ font-size:15px; margin:.2rem 0 .5rem; color:var(--ink); }
 .doc .sect-body{ }
 .doc .clause{ margin:.2rem 0; }
-.doc .clause-num{ font-weight:700; margin-right:.35rem; }
+.doc .clause-num{ font-weight:700; }
 .doc .blank{ height:.55rem; }
 mark.term{ background:var(--hl); color:inherit; border-radius:3px; padding:0 2px; }
 .doc-export{ background:#efece6; margin:0; padding:2.5rem 1rem; }
