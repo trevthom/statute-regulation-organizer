@@ -3,7 +3,7 @@
    the same stylesheet the screen links — and the same DOM serialization used
    for preview, so the export is styled identically to what is on screen. */
 
-import { partPath } from "../core/model.js";
+import { ORG_LEVELS, partPath } from "../core/model.js";
 import { renderChapterContent } from "../ui/render.js";
 
 export function escapeHtml(s) {
@@ -26,14 +26,13 @@ export function docCss() {
 
 const safePart = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, "_");
 
-/* e.g. "kentucky-7.html" or "federal-42-21.html" (jurisdiction + part values). */
+/* e.g. "kentucky-7.html" or "federal-42-21-IV.html" (jurisdiction + the
+   organization path, outermost level first). */
 export function exportFileName(jurisdiction, ch) {
   const bits = [jurisdiction ? jurisdiction.key : "chapter"];
-  if (jurisdiction) {
-    for (const t of jurisdiction.parts) {
-      const v = String((ch.partValues || {})[t] || "").trim();
-      if (v) bits.push(v);
-    }
+  for (const t of ORG_LEVELS) {
+    const v = String((ch.partValues || {})[t] || "").trim();
+    if (v) bits.push(v);
   }
   return bits.map(safePart).filter(Boolean).join("-") + ".html";
 }

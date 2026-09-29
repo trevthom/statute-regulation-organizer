@@ -3,75 +3,108 @@
    sidebar use for their edit buttons. */
 
 import {
-  ANCHOR, FEDERAL_PARTS, addJurisdiction, addSection, currentChapter, emptyState, findJurisdiction,
-  partPath, sampleData, updateChapter, updateJurisdiction, updateSection
+  addJurisdiction, addSection, anchorOf, currentChapter, emptyState, findJurisdiction, partPath,
+  sampleData, updateChapter, updateJurisdiction, updateSection
 } from "../core/model.js";
 import { normalizeBody } from "../core/text.js";
 import { save } from "../storage/local.js";
 import { exportChapter } from "../export/html.js";
-import { clearPartFields, readPartFields, renderPartFields, toast } from "./render.js";
+import { mountOrgTree, readOrg, renderComposerLabels, toast } from "./render.js";
 
 const $ = (id) => document.getElementById(id);
-
-/* Only the chapter number and the section number are required. Titles are
-   optional and default to UNKNOWN; the pasted text is purely the wording. */
-const REQUIRED = [
-  ["chNum", "chapter number"],
-  ["secNum", "section number"]
-];
-
-const REQUIRED_NOTE = "Only the chapter and section number are required. Titles default to UNKNOWN; " +
-  "the pasted text is used only as the section wording.";
 
 function joinList(items) {
   if (items.length === 1) return items[0];
   return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
 }
 
+function selectedJurisdiction(state) {
+  return findJurisdiction(state, $("jurisdiction").value) || state.jurisdictions[0] || null;
+}
+
+/* The two required fields: the anchor (a federal Title from 1 to 50, or a
+   state's chapter) and the section number. */
+function defaultNote(state) {
+  const j = selectedJurisdiction(state);
+  const anchor = anchorOf(j);
+  const federal = !!j && j.kind === "federal";
+  return "Only the " + anchor + " and the section number are required" +
+    (federal ? " \u2014 a Title is 1 to 50" : "") +
+    ". Every level you check takes 1\u20132 letters or numbers; titles are optional.";
+}
+
+let note = "";
 function hint(message) {
-  $("hint").textContent = message || REQUIRED_NOTE;
+  $("hint").textContent = message || note;
 }
 
 function chapterLabel(state, ch) {
   const j = findJurisdiction(state, ch.jurisdiction);
-  return partPath(j, ch.partValues) || "Chapter";
+  return partPath(j, ch.partValues) || anchorOf(j);
 }
 
-function selectedJurisdiction(state) {
-  const key = $("jurisdiction").value;
-  return findJurisdiction(state, key) || state.jurisdictions[0] || null;
+/* What a rejected organization path means to the user. */
+function orgMessage(anchor, result) {
+  if (result.field === "anchor") {
+    return result.reason === "range"
+      ? "A Title must be a number from 1 to 50."
+      : "Choose the " + anchor + ".";
+  }
+  return result.reason === "missing"
+    ? "Enter 1\u20132 letters or numbers for the " + result.level + "."
+    : "The " + result.level + " can only be 1\u20132 letters or numbers.";
+}
+
+/* Keep the composer's labels, organization tree and hint in step with the
+   selected jurisdiction. */
+function updateComposer(state) {
+  const j = selectedJurisdiction(state);
+  renderComposerLabels(j);
+  mountOrgTree(j);
+  note = defaultNote(state);
+  hint("");
+}
+
+/* Refuse to add before touching state when a required field is empty, and say
+   everything that is missing at once. The model checks the same things, so a
+   caller that skips this cannot sneak a section in. */
+function missingRequired(org, jurisdiction) {
+  const anchor = anchorOf(jurisdiction);
+  const missing = [];
+  if (!org.values[anchor]) missing.push(anchor);
+  if (!$("secNum").value.trim()) missing.push("section number");
+  return missing.length ? "Enter the " + joinList(missing) + "." : "";
 }
 
 function onAdd(app) {
   const state = app.getState();
+  const jurisdiction = selectedJurisdiction(state);
+  const anchor = anchorOf(jurisdiction);
 
-  const missing = REQUIRED.filter(([id]) => !$(id).value.trim()).map(([, label]) => label);
-  if (missing.length) {
-    const message = "Enter the " + joinList(missing) + ".";
-    hint(message);
-    toast(message, "warn");
+  const org = readOrg();
+  const missing = missingRequired(org, jurisdiction);
+  if (missing) {
+    hint(missing);
+    toast(missing, "warn");
     return;
   }
 
   const body = normalizeBody($("paste").value);
   if (!body) {
-    const message = "Paste the statute or regulation text first.";
-    hint(message);
-    toast(message, "warn");
+    hint("Paste the statute or regulation text first.");
+    toast("Paste the statute or regulation text first.", "warn");
     return;
   }
 
-  const jurisdiction = selectedJurisdiction(state);
-  const draft = {
+  const result = addSection(state, {
     jurisdiction: jurisdiction ? jurisdiction.key : "",
-    partValues: { ...readPartFields(), [ANCHOR]: $("chNum").value.trim() },
+    partValues: org.values,
+    checked: org.checked,
     chapterTitle: $("chTitle").value.trim(),
     number: $("secNum").value.trim(),
     title: $("secTitle").value.trim(),
     body
-  };
-
-  const result = addSection(state, draft);
+  });
   save(state);
 
   if (result.status === "no-jurisdiction") {
@@ -80,7 +113,7 @@ function onAdd(app) {
     return;
   }
   if (result.status === "invalid") {
-    const message = result.field === "chapter" ? "Enter the chapter number." : "Enter the section number.";
+    const message = result.field === "number" ? "Enter the section number." : orgMessage(anchor, result);
     hint(message);
     toast(message, "warn");
     return;
@@ -88,18 +121,18 @@ function onAdd(app) {
   if (result.status === "duplicate") {
     hint("");
     app.render();
-    toast("Section " + draft.number + " is already in " + chapterLabel(state, result.chapter) + ".", "warn");
+    toast("Section " + result.number + " is already in " + chapterLabel(state, result.chapter) + ".", "warn");
     return;
   }
 
-  for (const [id] of REQUIRED) $(id).value = "";
   $("chTitle").value = "";
+  $("secNum").value = "";
   $("secTitle").value = "";
   $("paste").value = "";
-  clearPartFields();
   hint("");
   app.render();
-  toast("Added \u00a7 " + draft.number + " to " + chapterLabel(state, result.chapter) + ".", "ok");
+  toast("Added " + (result.number ? "\u00a7 " + result.number : "the section") +
+    " to " + chapterLabel(state, result.chapter) + ".", "ok");
 }
 
 function setEditing(app, next) {
@@ -111,8 +144,10 @@ function setEditing(app, next) {
 
 function saveChapterEdit(app, id, draft) {
   const state = app.getState();
+  const ch = state.chapters.find((c) => c.id === id);
+  const anchor = anchorOf(ch && findJurisdiction(state, ch.jurisdiction));
   const result = updateChapter(state, id, draft);
-  if (result.status === "invalid") { toast("Chapter number cannot be empty.", "warn"); return; }
+  if (result.status === "invalid") { toast(orgMessage(anchor, result), "warn"); return; }
   if (result.status === "duplicate") { toast("That chapter already exists in this jurisdiction.", "warn"); return; }
   if (result.status === "missing") { setEditing(app, null); return; }
   save(state);
@@ -123,7 +158,7 @@ function saveChapterEdit(app, id, draft) {
 function saveSectionEdit(app, id, draft) {
   const state = app.getState();
   const result = updateSection(state, id, draft);
-  if (result.status === "invalid") { toast("Section number cannot be empty.", "warn"); return; }
+  if (result.status === "invalid") { toast("Enter the section number.", "warn"); return; }
   if (result.status === "duplicate") {
     toast("Section " + result.number + " is already in " + chapterLabel(state, result.chapter) + ".", "warn");
     return;
@@ -136,22 +171,11 @@ function saveSectionEdit(app, id, draft) {
 
 /* ---------- jurisdiction edits ---------- */
 
-/* Push whatever the user typed into the draft before a part action rebuilds
-   the form, so editing the organization never discards a pending name. */
-function flushJurisdictionDraft(view) {
-  const ed = view.editing;
-  if (!ed || ed.type !== "jurisdiction") return null;
-  if (ed._name) ed.draft.name = ed._name.value;
-  if (ed._kind) ed.draft.kind = ed._kind.value;
-  if (ed._newPart) ed.draft.newPart = ed._newPart.value;
-  return ed;
-}
-
-function saveJurisdictionEdit(app) {
-  const ed = flushJurisdictionDraft(app.getView());
-  if (!ed) return;
+function saveJurisdictionEdit(app, name, kind) {
   const state = app.getState();
-  const draft = { name: ed.draft.name, kind: ed.draft.kind, parts: ed.draft.parts };
+  const ed = app.getView().editing;
+  if (!ed || ed.type !== "jurisdiction") return;
+  const draft = { name, kind };
   const result = ed.key == null ? addJurisdiction(state, draft) : updateJurisdiction(state, ed.key, draft);
   if (result.status === "invalid") { toast("Jurisdiction name cannot be empty.", "warn"); return; }
   if (result.status === "duplicate") { toast("A jurisdiction with that name already exists.", "warn"); return; }
@@ -164,15 +188,11 @@ function saveJurisdictionEdit(app) {
 /* ---------- wiring ---------- */
 
 export function initEvents(app) {
+  note = defaultNote(app.getState());
   hint("");
 
   $("add").addEventListener("click", () => onAdd(app));
-
-  $("jurisdiction").addEventListener("change", () => {
-    const values = readPartFields();
-    renderPartFields(app.getState(), $("jurisdiction").value, values);
-    hint("");
-  });
+  $("jurisdiction").addEventListener("change", () => updateComposer(app.getState()));
 
   $("xOne").addEventListener("click", () => {
     const state = app.getState();
@@ -188,11 +208,7 @@ export function initEvents(app) {
   });
 
   $("addJurisdiction").addEventListener("click", () => {
-    setEditing(app, {
-      type: "jurisdiction",
-      key: null,
-      draft: { name: "", kind: "state", parts: [ANCHOR], newPart: "" }
-    });
+    setEditing(app, { type: "jurisdiction", key: null, draft: { name: "", kind: "state" } });
   });
 
   $("sample").addEventListener("click", () => {
@@ -200,6 +216,7 @@ export function initEvents(app) {
     app.getView().editing = null;
     save(app.getState());
     app.render();
+    updateComposer(app.getState());   // the anchor and note follow the new selection
     toast("Sample loaded.", "ok");
   });
 
@@ -210,6 +227,7 @@ export function initEvents(app) {
     app.getView().editing = null;
     save(app.getState());
     app.render();
+    updateComposer(app.getState());
   });
 
   return {
@@ -230,51 +248,9 @@ export function initEvents(app) {
       setEditing(app, {
         type: "jurisdiction",
         key: j.key,
-        draft: { name: j.name, kind: j.kind, parts: j.parts.slice(), newPart: "" }
+        draft: { name: j.name, kind: j.kind }
       });
     },
-    onSaveJurisdiction() { saveJurisdictionEdit(app); },
-
-    onJurisdictionKind(kind) {
-      const ed = flushJurisdictionDraft(app.getView());
-      if (!ed) return;
-      ed.draft.kind = kind;
-      if (kind === "federal" && ed.draft.parts.length <= 1) ed.draft.parts = FEDERAL_PARTS.slice();
-      app.render();
-    },
-
-    onMovePart(index, delta) {
-      const ed = flushJurisdictionDraft(app.getView());
-      if (!ed) return;
-      const next = index + delta;
-      const parts = ed.draft.parts;
-      if (next < 0 || next >= parts.length) return;
-      const [moved] = parts.splice(index, 1);
-      parts.splice(next, 0, moved);
-      app.render();
-    },
-
-    onRemovePart(index) {
-      const ed = flushJurisdictionDraft(app.getView());
-      if (!ed) return;
-      const part = ed.draft.parts[index];
-      if (!part || part.toLowerCase() === ANCHOR.toLowerCase()) return;
-      ed.draft.parts = ed.draft.parts.filter((_, i) => i !== index);
-      app.render();
-    },
-
-    onAddPart() {
-      const ed = flushJurisdictionDraft(app.getView());
-      if (!ed) return;
-      const part = String(ed.draft.newPart || "").trim();
-      if (!part) return;
-      if (ed.draft.parts.some((t) => t.toLowerCase() === part.toLowerCase())) {
-        toast("That organization part already exists.", "warn");
-        return;
-      }
-      ed.draft.parts = [...ed.draft.parts, part];
-      ed.draft.newPart = "";
-      app.render();
-    }
+    onSaveJurisdiction(name, kind) { saveJurisdictionEdit(app, name, kind); }
   };
 }

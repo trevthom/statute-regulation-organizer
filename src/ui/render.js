@@ -8,12 +8,14 @@
    The interactive bits (edit buttons and inline forms) are only rendered when a
    `ctx` is supplied, which keeps the exported document free of UI chrome.
 
-   The sidebar is grouped by jurisdiction (a state, or Federal). Federal
-   jurisdictions additionally expose their ordered organization parts, edited
-   inline through ctx.view.editing.draft. */
+   The sidebar is grouped by jurisdiction (the federal system, or a state) and
+   the composer files a section through the fixed organization tree: the
+   jurisdiction's anchor level (Title for federal, Chapter for a state) plus the
+   optional levels the user checked, each with a 1-2 character code. */
 
 import {
-  ANCHOR, chaptersInOrder, currentChapter, findJurisdiction, partPath, sortedJurisdictions
+  CODE_MAX, FEDERAL_ANCHOR, ORG_LEVELS, TITLE_MAX, TITLE_MIN, anchorOf, chaptersInOrder,
+  currentChapter, findJurisdiction, partPath, sortedJurisdictions
 } from "../core/model.js";
 import { chapterDefinitions, definitionUnits, highlightRuns, termSuppressor } from "../core/definitions.js";
 import { analyzeBody } from "../core/nesting.js";
@@ -59,17 +61,37 @@ function field(labelText, value, placeholder) {
   return { wrap, input };
 }
 
-function editForm(fields, onSave, onCancel) {
-  const form = el("div", "edit-form");
-  form._focus = fields.length ? fields[0].input : null;
+/* Every input inside a node (the chapter editor nests its fields in the
+   organization tree, so this cannot just look at direct children). */
+function inputsIn(node) {
+  const out = [];
+  const walk = (n) => {
+    for (const c of arrayOf(n.childNodes)) {
+      if (c.nodeType !== 1) continue;
+      if (c.tagName === "INPUT" || c.tagName === "SELECT") out.push(c);
+      walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
 
-  for (const f of fields) {
-    f.input.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") { ev.preventDefault(); onSave(); }
-      else if (ev.key === "Escape") onCancel();
-    });
-    form.appendChild(f.wrap);
+/* An inline form over already-built nodes. Enter saves, Escape cancels, and
+   the first field is focused when the form appears. */
+function editForm(nodes, onSave, onCancel) {
+  const form = el("div", "edit-form");
+  let first = null;
+  for (const node of nodes) {
+    form.appendChild(node);
+    for (const input of inputsIn(node)) {
+      if (!first) first = input;
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); onSave(); }
+        else if (ev.key === "Escape") onCancel();
+      });
+    }
   }
+  form._focus = first;
 
   const actions = el("div", "edit-actions");
   const ok = el("button", "primary", "Save");
@@ -84,48 +106,141 @@ function editForm(fields, onSave, onCancel) {
   return form;
 }
 
-function inputIn(node) {
-  for (const c of arrayOf(node.childNodes)) {
-    if (c.nodeType === 1 && c.tagName === "INPUT") return c;
+/* ---------- the organization tree ---------- */
+
+function readOrgRows(rows) {
+  const values = {};
+  const checked = [];
+  for (const row of rows) {
+    if (!row.check.checked) continue;
+    checked.push(row.level);
+    const value = String(row.input.value == null ? "" : row.input.value).trim();
+    if (value) values[row.level] = value;
   }
-  return null;
+  return { values, checked };
 }
 
-/* One text field per organization part, in the jurisdiction's order. The
-   Chapter anchor is marked required and defaults its label to "Chapter *". */
-function chapterEditor(ch, jurisdiction, ctx) {
-  const fields = [];
-  const parts = jurisdiction ? jurisdiction.parts : [ANCHOR];
-  for (const t of parts) {
-    const f = field(t === ANCHOR ? t + " *" : t, (ch.partValues || {})[t],
-      t === ANCHOR ? "e.g. 7" : "optional");
-    f.part = t;
-    f.input._part = t;                 // marker so callers/tests can find the field
-    fields.push(f);
-  }
-  const title = field("Chapter title", ch.title, "defaults to UNKNOWN");
-  fields.push(title);
+/* The fixed hierarchy, one row per level. The jurisdiction's anchor row is
+   always checked — it is the required level and cannot be turned off — and is
+   a pick-list of federal Titles or a chapter number for a state. Every other
+   level is opt-in; once checked it takes a code of up to 2 letters or digits.
+   Returns the built rows so callers can read the live values back. */
+export function orgTree(jurisdiction, values, checked) {
+  const anchor = anchorOf(jurisdiction);
+  const federal = !!jurisdiction && jurisdiction.kind === "federal";
+  const src = values || {};
+  const on = (Array.isArray(checked) ? checked : []).map((c) => String(c).toLowerCase());
+  const box = el("div", "org-tree");
+  const rows = [];
 
-  const form = editForm(fields,
-    () => ctx.handlers.onSaveChapter(ch.id, {
-      partValues: collectParts(fields),
-      title: title.input.value
-    }),
+  ORG_LEVELS.forEach((level, i) => {
+    const isAnchor = level === anchor;
+    const row = el("div", "org-row" + (isAnchor ? " anchor" : ""));
+    row.style.paddingLeft = (i * 0.7) + "rem";
+    row._level = level;
+
+    const pick = el("label", "org-pick");
+    const check = el("input", "org-check");
+    check.type = "checkbox";
+    check.checked = isAnchor || on.includes(level.toLowerCase()) || !!src[level];
+    check.disabled = isAnchor;
+    pick.appendChild(check);
+    pick.appendChild(el("span", "org-name", level));
+    row.appendChild(pick);
+
+    let input;
+    if (isAnchor && federal) {
+      input = el("select", "org-input");
+      const blank = el("option", null, "Select");
+      blank.value = "";
+      input.appendChild(blank);
+      for (let n = TITLE_MIN; n <= TITLE_MAX; n++) {
+        const option = el("option", null, String(n));
+        option.value = String(n);
+        input.appendChild(option);
+      }
+      input.value = src[level] ? String(src[level]) : "";
+    } else {
+      input = el("input", "org-input");
+      input.type = "text";
+      input.maxLength = isAnchor ? 12 : CODE_MAX;
+      input.placeholder = isAnchor ? "e.g. 7" : "1\u20132";
+      input.value = src[level] ? String(src[level]) : "";
+    }
+    input._level = level;
+    input.disabled = !check.checked;
+
+    check.addEventListener("change", () => {
+      input.disabled = !check.checked;
+      if (check.checked && typeof input.focus === "function") input.focus();
+    });
+
+    row.appendChild(input);
+    box.appendChild(row);
+    rows.push({ level, isAnchor, check, input });
+  });
+
+  return { box, rows, read: () => readOrgRows(rows) };
+}
+
+/* The composer's tree lives across re-renders: it is read back before being
+   rebuilt so a render triggered elsewhere never wipes a code mid-entry. */
+let orgKey = null;
+let orgRows = [];
+let orgDraft = { values: {}, checked: [] };
+
+export function mountOrgTree(jurisdiction) {
+  const host = $("parts");
+  const key = jurisdiction ? jurisdiction.key : "";
+  if (key !== orgKey) {
+    orgKey = key;
+    orgRows = [];
+    orgDraft = { values: {}, checked: [] };
+  } else if (orgRows.length) {
+    orgDraft = readOrgRows(orgRows);
+  }
+
+  const anchor = anchorOf(jurisdiction);
+  host.innerHTML = "";
+  host.appendChild(el("span", "org-caption",
+    "Organization \u2014 only the " + anchor +
+    " is required; every level you check takes 1\u20132 letters or numbers."));
+  const tree = orgTree(jurisdiction, orgDraft.values, orgDraft.checked);
+  host.appendChild(tree.box);
+  orgRows = tree.rows;
+  return tree;
+}
+
+/* What the composer's tree currently says: levels that are checked and the
+   codes they carry. */
+export function readOrg() {
+  return readOrgRows(orgRows);
+}
+
+/* ---------- inline editors ---------- */
+
+function chapterEditor(ch, jurisdiction, ctx) {
+  const anchor = anchorOf(jurisdiction);
+  const values = ch.partValues || {};
+  const tree = orgTree(jurisdiction, values, Object.keys(values));
+  const title = field(anchor + " title", ch.title, "defaults to UNKNOWN");
+
+  const form = editForm([tree.box, title.wrap],
+    () => {
+      const org = tree.read();
+      ctx.handlers.onSaveChapter(ch.id, {
+        partValues: org.values, checked: org.checked, title: title.input.value
+      });
+    },
     () => ctx.handlers.onCancelEdit());
   ctx.focus = form._focus;
   return form;
 }
 
-function collectParts(fields) {
-  const values = {};
-  for (const f of fields) if (f.part) values[f.part] = f.input.value;
-  return values;
-}
-
 function sectionEditor(sec, ctx) {
-  const number = field("Section number", sec.number, "e.g. 7-12");
+  const number = field("Section number *", sec.number, "e.g. 7-12");
   const title = field("Section title", sec.title, "defaults to UNKNOWN");
-  const form = editForm([number, title],
+  const form = editForm([number.wrap, title.wrap],
     () => ctx.handlers.onSaveSection(sec.id, { number: number.input.value, title: title.input.value }),
     () => ctx.handlers.onCancelEdit());
   ctx.focus = form._focus;
@@ -133,73 +248,26 @@ function sectionEditor(sec, ctx) {
 }
 
 /* The jurisdiction editor edits a draft held in view.editing (UI-only state).
-   Because reordering / adding / removing a part re-renders the form, the name
-   and "new part" inputs are stashed on the editing object so the handlers can
-   flush whatever the user typed before rebuilding. */
+   Save reads the live inputs, so nothing has to be stashed while typing. */
 function jurisdictionEditor(ctx) {
-  const ed = ctx.view.editing;
-  const draft = ed.draft;
-  const form = el("div", "edit-form jur-edit");
-
+  const draft = ctx.view.editing.draft;
   const name = field("Jurisdiction name", draft.name, "e.g. Kentucky");
-  ed._name = name.input;
-  form.appendChild(name.wrap);
 
   const kindWrap = el("label", "edit-field");
   kindWrap.appendChild(el("span", "edit-label", "Kind"));
   const kind = el("select", "edit-input");
   for (const [value, label] of [["state", "State"], ["federal", "Federal"]]) {
-    const o = el("option", null, label);
-    o.value = value;
-    kind.appendChild(o);
+    const option = el("option", null, label);
+    option.value = value;
+    kind.appendChild(option);
   }
-  kind.value = draft.kind;
-  kind.addEventListener("change", () => ctx.handlers.onJurisdictionKind(kind.value));
+  kind.value = draft.kind === "federal" ? "federal" : "state";
   kindWrap.appendChild(kind);
-  ed._kind = kind;
-  form.appendChild(kindWrap);
 
-  if (draft.kind === "federal") {
-    form.appendChild(el("span", "edit-label", "Organization (top to bottom)"));
-    const list = el("div", "part-list");
-    draft.parts.forEach((t, i) => {
-      const row = el("div", "part-row");
-      row.appendChild(el("span", "part-name", t));
-      row.appendChild(iconButton("\u2191", "Move up", () => ctx.handlers.onMovePart(i, -1)));
-      row.appendChild(iconButton("\u2193", "Move down", () => ctx.handlers.onMovePart(i, 1)));
-      if (t.toLowerCase() !== ANCHOR.toLowerCase()) {
-        row.appendChild(iconButton("\u2715", "Remove " + t, () => ctx.handlers.onRemovePart(i)));
-      }
-      list.appendChild(row);
-    });
-
-    const addRow = el("div", "part-row");
-    const newPart = el("input", "edit-input");
-    newPart.type = "text";
-    newPart.placeholder = "e.g. Subpart";
-    newPart.value = draft.newPart || "";
-    ed._newPart = newPart;
-    addRow.appendChild(newPart);
-    const addBtn = el("button", null, "Add");
-    addBtn.type = "button";
-    addBtn.addEventListener("click", () => ctx.handlers.onAddPart());
-    addRow.appendChild(addBtn);
-    list.appendChild(addRow);
-    form.appendChild(list);
-  }
-
-  const actions = el("div", "edit-actions");
-  const save = el("button", "primary", "Save");
-  save.type = "button";
-  save.addEventListener("click", () => ctx.handlers.onSaveJurisdiction());
-  const cancel = el("button", null, "Cancel");
-  cancel.type = "button";
-  cancel.addEventListener("click", () => ctx.handlers.onCancelEdit());
-  actions.appendChild(save);
-  actions.appendChild(cancel);
-  form.appendChild(actions);
-
-  ctx.focus = name.input;
+  const form = editForm([name.wrap, kindWrap],
+    () => ctx.handlers.onSaveJurisdiction(name.input.value, kind.value),
+    () => ctx.handlers.onCancelEdit());
+  ctx.focus = form._focus;
   return form;
 }
 
@@ -213,61 +281,21 @@ export function renderJurisdictionSelect(state) {
   sel.innerHTML = "";
   const list = sortedJurisdictions(state);
   for (const j of list) {
-    const o = el("option", null, j.name + (j.kind === "federal" ? " (Federal)" : ""));
-    o.value = j.key;
-    sel.appendChild(o);
+    const option = el("option", null, j.name + (j.kind === "federal" ? " (Federal)" : ""));
+    option.value = j.key;
+    sel.appendChild(option);
   }
   const keys = list.map((j) => j.key);
   sel.value = keys.includes(previous) ? previous : (keys[0] || "");
   return sel.value;
 }
 
-/* Extra organization inputs for the selected jurisdiction (everything except
-   the Chapter anchor, which has its own fixed "chapter number" field). Only
-   rebuilds when the jurisdiction or its part list actually changes, so a
-   re-render triggered elsewhere never wipes text the user is typing. */
-let partSignature = null;
-export function renderPartFields(state, jurisdictionKey, values) {
-  const host = $("parts");
-  const j = findJurisdiction(state, jurisdictionKey);
-  const sig = j ? j.key + "::" + j.parts.map((t) => t.toLowerCase()).join(",") : "";
-  if (sig === partSignature) return;
-  partSignature = sig;
-
-  host.innerHTML = "";
-  if (!j) return;
-  const src = values || {};
-  for (const t of j.parts) {
-    if (t.toLowerCase() === ANCHOR.toLowerCase()) continue;
-    const wrap = el("label", "part-field");
-    wrap._part = t;
-    wrap.appendChild(el("span", "part-label", t));
-    const input = el("input", "part-input");
-    input.type = "text";
-    input.placeholder = "optional";
-    input.value = src[t] == null ? "" : src[t];
-    wrap.appendChild(input);
-    host.appendChild(wrap);
-  }
-}
-
-/* Current values of the extra organization inputs, keyed by part type. */
-export function readPartFields() {
-  const values = {};
-  for (const node of arrayOf($("parts").childNodes)) {
-    if (node.nodeType !== 1 || !node._part) continue;
-    const input = inputIn(node);
-    if (input) values[node._part] = input.value.trim();
-  }
-  return values;
-}
-
-export function clearPartFields() {
-  for (const node of arrayOf($("parts").childNodes)) {
-    if (node.nodeType !== 1 || !node._part) continue;
-    const input = inputIn(node);
-    if (input) input.value = "";
-  }
+/* Two required fields, and a chapter title that follows the jurisdiction: a
+   Title heading for the federal system, a Chapter title for a state. */
+export function renderComposerLabels(jurisdiction) {
+  const anchor = anchorOf(jurisdiction);
+  $("chTitleLabel").textContent = anchor + " " + (anchor === FEDERAL_ANCHOR ? "heading" : "title");
+  $("secNumLabel").textContent = "Section number *";
 }
 
 /* ---------- document body ---------- */
@@ -279,6 +307,10 @@ export function renderRuns(host, text, terms, shouldMark) {
   }
 }
 
+/* One step of indentation per nesting level: a clause in the body's own margin
+   sits at depth 0, a subclause inside it at 1, a subclause inside that at 2.
+   The marker is followed by a real space so the label and the wording never run
+   together, on screen, in an export, or when the text is copied out. */
 export function renderBody(body, terms, units) {
   const container = el("div", "sect-body");
   const suppressed = termSuppressor(units);
@@ -288,7 +320,10 @@ export function renderBody(body, terms, units) {
 
     const p = el("div", "clause");
     p.style.paddingLeft = (item.depth * 1.5) + "rem";
-    if (item.marker) p.appendChild(el("b", "clause-num", item.marker));
+    if (item.marker) {
+      p.appendChild(el("b", "clause-num", item.marker));
+      p.appendChild(document.createTextNode(" "));
+    }
 
     const span = el("span");
     renderRuns(span, item.text, terms, (term, i) => suppressed(term, item.start + i));
@@ -368,7 +403,7 @@ function jurisdictionGroup(state, jurisdiction, ctx) {
   const head = el("div", "jur-head");
   head.appendChild(el("span", "jur-name", jurisdiction.name));
   head.appendChild(el("span", "jur-tag", jurisdiction.kind === "federal" ? "Federal" : "State"));
-  head.appendChild(iconButton("Edit", "Edit jurisdiction and organization",
+  head.appendChild(iconButton("Edit", "Edit jurisdiction",
     () => ctx.handlers.onEditJurisdiction(jurisdiction.key)));
   group.appendChild(head);
 
@@ -402,7 +437,9 @@ export function renderActive(state, view, handlers) {
   const ctx = { view, handlers, focus: null };
 
   renderJurisdictionSelect(state);
-  renderPartFields(state, $("jurisdiction").value);
+  const jurisdiction = findJurisdiction(state, $("jurisdiction").value);
+  renderComposerLabels(jurisdiction);
+  mountOrgTree(jurisdiction);
   renderSidebar(state, ctx);
 
   const host = $("sections");
@@ -410,7 +447,7 @@ export function renderActive(state, view, handlers) {
   const ch = currentChapter(state);
   if (!ch) {
     host.appendChild(el("p", "empty-note",
-      "No chapters yet \u2014 fill in the chapter number and section number above, then click \u201CAdd section\u201D."));
+      "No chapters yet \u2014 choose a jurisdiction and a section's organization above, paste the wording, then click \u201CAdd section\u201D."));
     return;
   }
   host.appendChild(renderChapterContent(ch, findJurisdiction(state, ch.jurisdiction), ctx));

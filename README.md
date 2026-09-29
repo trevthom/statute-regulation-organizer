@@ -26,36 +26,51 @@ Other equivalents: `npx serve .`, `php -S localhost:8000`, or any static host.
 ## Using it
 
 The library is organized as **jurisdiction → chapter → section**. The sidebar
-groups everything by jurisdiction: **Federal law** is one group, and every
-**state** you add is another.
+groups everything by jurisdiction, and comes prepopulated with **Federal law and
+all 50 states** — pick one from the *Jurisdiction* drop-down, or *Add
+jurisdiction* for anything else. A jurisdiction's name and kind (State or
+Federal) can be changed later with the *Edit* button on its group header.
 
-- **Add a jurisdiction** with *Add jurisdiction* in the sidebar. Give it a name
-  (e.g. `Kentucky`) and choose State or Federal. You can edit it later with the
-  *Edit* button on its group header.
-- **Federal organization.** Federal statutes are often filed under several
-  levels. For a Federal jurisdiction, the editor lists its organization parts
-  (by default `Title`, `Chapter`, `Subchapter`, `Part`) top to bottom. Add your
-  own part (e.g. `Subtitle`, `Subpart`), remove one, or reorder them with the
-  arrow buttons. `Chapter` is the anchor and cannot be removed. The order set
-  here is the order used everywhere the parts are shown and sorted.
-- **Add a section.** *Only the chapter number and the section number are
-  required.* Chapter and section titles are optional — **if you leave a title
-  blank it defaults to `UNKNOWN`** (you can fill it in later with *Edit*).
-- Pick the jurisdiction, enter the chapter number, and fill in any organization
-  parts the jurisdiction defines (e.g. `Title 42`, `Subchapter IV`). Federal
-  chapters are identified by their full path, so `Title 42, Chapter 21` and
-  `Title 15, Chapter 21` are separate chapters.
+Statutes are filed through one fixed hierarchy, from the outermost level down:
+
+```
+Title
+  └─ [Subtitle]
+       └─ [Division]
+            └─ [Chapter]
+                 └─ [Subchapter]
+                      └─ [Part]
+                           └─ [Subpart]
+                                └─ [Section]
+                                     └─ [Subsection]
+```
+
+- **Only the Title and the section number are required.** The Title is a
+  drop-down that offers exactly the numbers **1 to 50** (a state's required
+  level is its Chapter, typed in); the section number is typed in below.
+- Every bracketed level is optional: **tick the box** for the levels that apply
+  and give each one its code — **up to 2 letters or numbers** (`21`, `IV`, `A`).
+  The codes are what organizes the statute, and a chapter is identified by its
+  full path, so `Title 42, Chapter 21` and `Title 15, Chapter 21` are separate
+  chapters while `Title 42, Chapter 21, Subchapter IV` is a third.
+- The Title and the codes stay in the form after a section is added, so a
+  further statute in the same place only needs its number and wording.
+- **Everything else is optional** — the section title and the chapter's own
+  title. **If you leave a title blank it defaults to `UNKNOWN`** (fill it in
+  later with *Edit*).
 - The paste box takes *only* the wording of the statute or regulation — no
   section number, no section title, no chapter heading. Nothing is detected or
   parsed out of the paste; all of it is stored as this section's text, cleaned
   up on **Add section**.
 - **Edit a chapter** with the *Edit* button next to it in the sidebar — that
-  changes its organization parts (chapter number, title, etc.) and its title.
+  changes its organization (the same tree) and its title.
 - **Edit a section** with the *Edit* button on its heading — that changes its
   number and title. The chapter re-sorts automatically.
 - **Enter** saves an inline editor, **Escape** (or *Cancel*) discards it.
-- A change that would collide with an existing chapter or section number is
-  refused with a message, and the editor stays open so it can be fixed.
+- A section cannot be added without a Title and a section number: *Add section*
+  names what is missing and adds nothing. A change that would collide with an
+  existing chapter or section number is refused too, and the editor stays open so
+  it can be fixed.
 - **Export chapter** / **Export all** download standalone, styled HTML files
   (named by jurisdiction and organization path, e.g. `federal-42-21-IV.html`).
   **Load sample** loads demo data; **Clear all** empties the library.
@@ -66,8 +81,11 @@ groups everything by jurisdiction: **Federal law** is one group, and every
   a definitions section added later retroactively highlights the term in earlier
   sections. Matching is case-insensitive but whole-word, and a section never
   highlights a term inside its own definition.
-- **Clause nesting.** Numbered/lettered clauses are indented and their markers
-  printed once, following the paste's own indentation when present.
+- **Clause nesting.** Each nesting level is indented one step further than the
+  one it sits in — the clause in the body's own margin, a subclause one step in,
+  a subclause inside that two — following the paste's own indentation when
+  present and the clause markers when it is not. A marker (`(a)`, `(ii)`) is
+  printed once and always followed by a space.
 - **Cleanup.** CRLF newlines, hard spaces, stray tabs, space runs, blank-line
   piles and mid-sentence line wraps are repaired on *Add section* — without ever
   altering wording, punctuation, capitalization or citations.

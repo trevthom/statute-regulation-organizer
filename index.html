@@ -29,12 +29,11 @@
       <textarea id="paste" placeholder="Paste only the wording of the statute or regulation here. Do not include the section number, the section title, or the chapter heading — enter those in the fields below.&#10;&#10;Everything you paste is used as this section's text.&#10;&#10;e.g.&#10;(a) Every public utility shall file its rates with the authority.&#10;    (1) A filing must state the net income for the preceding year."></textarea>
       <div class="fields">
         <label>Jurisdiction<select id="jurisdiction"></select></label>
-        <label>Chapter number *<input id="chNum" placeholder="e.g. 7" aria-required="true"></label>
-        <label>Chapter title<input id="chTitle" placeholder="defaults to UNKNOWN"></label>
-        <label>Section number *<input id="secNum" placeholder="e.g. 7-12" aria-required="true"></label>
+        <label><span id="chTitleLabel">Chapter title</span><input id="chTitle" placeholder="defaults to UNKNOWN"></label>
+        <label><span id="secNumLabel">Section number *</span><input id="secNum" placeholder="e.g. 7-12" aria-required="true"></label>
         <label>Section title<input id="secTitle" placeholder="defaults to UNKNOWN"></label>
       </div>
-      <div class="part-fields" id="parts"></div>
+      <div class="org" id="parts"></div>
       <div class="hint" id="hint"></div>
       <div class="composer-row">
         <button type="button" class="primary" id="add">Add section</button>
