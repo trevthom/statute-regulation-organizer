@@ -3,6 +3,7 @@
    the same stylesheet the screen links — and the same DOM serialization used
    for preview, so the export is styled identically to what is on screen. */
 
+import { partPath } from "../core/model.js";
 import { renderChapterContent } from "../ui/render.js";
 
 export function escapeHtml(s) {
@@ -23,13 +24,28 @@ export function docCss() {
   return "";
 }
 
-export function exportChapter(ch) {
-  const page = renderChapterContent(ch);
-  const docTitle = "Chapter " + ch.key + (ch.title ? " — " + ch.title : "");
+const safePart = (s) => String(s).replace(/[^A-Za-z0-9._-]/g, "_");
+
+/* e.g. "kentucky-7.html" or "federal-42-21.html" (jurisdiction + part values). */
+export function exportFileName(jurisdiction, ch) {
+  const bits = [jurisdiction ? jurisdiction.key : "chapter"];
+  if (jurisdiction) {
+    for (const t of jurisdiction.parts) {
+      const v = String((ch.partValues || {})[t] || "").trim();
+      if (v) bits.push(v);
+    }
+  }
+  return bits.map(safePart).filter(Boolean).join("-") + ".html";
+}
+
+export function exportChapter(ch, jurisdiction) {
+  const page = renderChapterContent(ch, jurisdiction);
+  const heading = partPath(jurisdiction, ch.partValues) || "Chapter";
+  const docTitle = heading + (ch.title ? " \u2014 " + ch.title : "");
   const html = "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n" +
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>" + escapeHtml(docTitle) + "</title>\n" +
     "<style>\n" + docCss() + "\n</style></head>\n<body class=\"doc-export\">\n<div class=\"doc\">" + page.outerHTML + "</div>\n</body></html>";
-  download(html, "chapter-" + String(ch.key).replace(/[^A-Za-z0-9._-]/g, "_") + ".html");
+  download(html, exportFileName(jurisdiction, ch));
 }
 
 export function download(html, name) {
