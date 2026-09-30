@@ -1,7 +1,7 @@
 /* End-to-end smoke test: boots the REAL src/main.js against the real
    index.html (via the DOM shim) and drives the app the way a user would — pick
-   a jurisdiction, fill in the organization tree, paste wording, edit names,
-   export chapters. No dependencies.
+   a jurisdiction and the organization levels, paste wording, edit names, export
+   chapters. No dependencies.
 
    Run with:  node --test tests/dom.test.js
 
@@ -43,186 +43,198 @@ function sectByHead(head) {
 function chapterRow(label) {
   return byClass($("chapters"), "chap-row").find((r) => byClass(r, "cl")[0].textContent === label);
 }
+const chapterBtn = (label) => byClass(chapterRow(label), "chap-btn")[0];
 function jurGroup(name) {
   return byClass($("chapters"), "jur-group")
     .find((g) => (byClass(g, "jur-name")[0] || {}).textContent === name);
 }
 const openEditor = (scope) => byClass(scope, "edit-form")[0];
 
-/* ---------- the composer's organization tree ---------- */
-const orgRows = (host = $("parts")) => byClass(host, "org-row");
+/* ---------- the composer's organization layer ---------- */
+
 const orgRow = (level, host = $("parts")) =>
-  orgRows(host).find((r) => byClass(r, "org-name")[0].textContent === level);
+  byClass(host, "org-row").find((r) => byClass(r, "org-name")[0].textContent === level);
 const orgCheck = (level, host) => byClass(orgRow(level, host), "org-check")[0];
-const orgInput = (level, host) => byClass(orgRow(level, host), "org-input")[0];
-const anchorInput = (host = $("parts")) => byClass(all(host, (e) => e.classList.contains("anchor"))[0], "org-input")[0];
+const orgValue = (level, host) => byClass(orgRow(level, host), "org-input")[0];
+const orgTitle = (level, host) => byClass(orgRow(level, host), "org-input")[1];
+const orgLevels = (host = $("parts")) => byClass(host, "org-name").map((e) => e.textContent);
+const kindSelect = () => byClass($("parts"), "org-kind")[0];
+const stateSelect = () => byClass($("parts"), "org-state")[0];
 
-/* The anchor of the selected jurisdiction, via the row the composer marks. */
-function anchorLevel() {
-  return byClass($("parts"), "org-name")[orgRows().findIndex((r) => r.classList.contains("anchor"))]
-    .textContent;
+async function setKind(kind) {
+  const sel = kindSelect();
+  if (sel.value === kind) return;
+  sel.value = kind;
+  await dispatch(sel, "change");
 }
 
-async function setAnchor(value) {
-  anchorInput().value = value;
+async function pickState(key) {
+  const sel = stateSelect();
+  sel.value = key;
+  await dispatch(sel, "change");
 }
 
-/* Turn a level on (if it is off) and give it its code. */
-async function setLevel(level, code) {
+/* Turn a level on (if it is off) and give it its value and title. */
+async function setLevel(level, value, title) {
   const box = orgCheck(level);
   if (!box.checked) { box.checked = true; await dispatch(box, "change"); }
-  orgInput(level).value = code;
+  orgValue(level).value = value == null ? "" : value;
+  if (title != null) orgTitle(level).value = title;
 }
 
-async function pickJurisdiction(key) {
-  if ($("jurisdiction").value === key) return;
-  $("jurisdiction").value = key;
-  await dispatch($("jurisdiction"), "change");
-}
-
-function fillComposer({ paste = "", chTitle = "", secNum = "", secTitle = "" }) {
-  $("paste").value = paste;
-  $("chTitle").value = chTitle;
-  $("secNum").value = secNum;
-  $("secTitle").value = secTitle;
+async function unsetLevel(level) {
+  const box = orgCheck(level);
+  if (!box.checked) return;
+  box.checked = false;
+  await dispatch(box, "change");
 }
 
 async function addSection(opts = {}) {
-  if (opts.jur) await pickJurisdiction(opts.jur);
-  if (opts.anchor != null) await setAnchor(opts.anchor);
-  for (const [level, code] of Object.entries(opts.levels || {})) await setLevel(level, code);
-  fillComposer(opts);
+  if (opts.kind) await setKind(opts.kind);
+  if (opts.state != null) await pickState(opts.state);
+  for (const level of opts.off || []) await unsetLevel(level);
+  for (const [level, spec] of Object.entries(opts.levels || {})) {
+    if (Array.isArray(spec)) await setLevel(level, spec[0], spec[1]);
+    else await setLevel(level, spec);
+  }
+  if (opts.paste != null) $("paste").value = opts.paste;
   await click("add");
 }
 
-const fedChapter = (title) => saved().chapters.find((c) => (c.partValues || {}).Title === title);
-const kyChapter = (number) => saved().chapters.find((c) => (c.partValues || {}).Chapter === number);
 const chapterOf = (number) => saved().chapters.find((c) => c.sections.some((s) => s.number === number));
+const chapterAt = (level, value) =>
+  saved().chapters.find((c) => (c.partValues || {})[level] === value);
 
 /* ---------- boot ---------- */
 
-test("boots with Federal plus every state and asks for the Title and a section number", () => {
+test("boots with Federal plus every state and a required section number", () => {
   assert.match($("sections").textContent, /No chapters yet/);
-  assert.match($("hint").textContent, /Only the Title and the section number are required/);
-  assert.equal($("chTitleLabel").textContent, "Title heading");
-  assert.equal($("secNumLabel").textContent, "Section number *", "the section number is required");
+  assert.match($("hint").textContent, /Only the section number is required/);
 
-  const sel = $("jurisdiction");
-  assert.equal(options(sel).length, 51);
-  assert.equal(sel.value, "federal");
-  assert.equal(options(sel)[0].textContent, "Federal (Federal)");
-  assert.deepEqual(options(sel).slice(1, 4).map((o) => o.textContent), ["Alabama", "Alaska", "Arizona"]);
-  assert.equal(options(sel).at(-1).textContent, "Wyoming");
+  // The composer is now the paste box, the jurisdiction picker and the
+  // organization rows — no fields above them, no sample, no jurisdiction editor.
+  assert.deepEqual(dom.ids.slice().sort(),
+    ["add", "chapters", "clear", "hint", "parts", "paste", "sections", "toast", "xAll", "xOne"]);
+  assert.throws(() => $("sample"), "the Load sample button is gone");
+  assert.throws(() => $("addJurisdiction"), "jurisdictions are a closed list now");
+  assert.throws(() => $("secNum"), "there is no section number field above the organization layer");
+
+  assert.deepEqual(orgLevels(),
+    ["Title", "Subtitle", "Division", "Chapter", "Subchapter", "Part", "Subpart", "Section", "Subsection"]);
+  const section = orgCheck("Section");
+  assert.ok(section.checked && section.disabled, "the Section row is the required one");
+  assert.equal(orgCheck("Title").checked, false, "the Title is no longer automatic");
+  assert.ok(orgValue("Title").disabled, "an unchecked level takes no value");
+  assert.ok(orgTitle("Title"), "every level has a title input next to its value");
+
+  assert.equal(kindSelect().value, "federal");
+  assert.deepEqual(options(kindSelect()).map((o) => o.textContent), ["Federal", "State"]);
+  assert.equal(stateSelect().disabled, true, "a state is only needed for a state jurisdiction");
 
   assert.equal(jurNames().length, 51, "the sidebar is prepopulated");
   assert.equal(jurNames()[0], "Federal");
   assert.ok(jurNames().includes("Kentucky") && jurNames().includes("Wyoming"));
 });
 
-test("the Title is a drop-down that offers exactly 1 to 50", () => {
-  const sel = anchorInput();
-  assert.equal(sel.tagName, "SELECT");
-  assert.equal(anchorLevel(), "Title");
-  assert.equal(orgRows().map((r) => byClass(r, "org-name")[0].textContent).join(","),
-    "Title,Subtitle,Division,Chapter,Subchapter,Part,Subpart,Section,Subsection");
-
-  const opts = options(sel);
-  assert.equal(opts.length, 51, "a blank choice plus 50 Titles");
-  assert.equal(opts[0].value, "");
-  assert.deepEqual(opts.slice(1, 4).map((o) => o.textContent), ["1", "2", "3"]);
-  assert.equal(opts.at(-1).textContent, "50");
-
-  const check = orgCheck("Title");
-  assert.ok(check.checked && check.disabled, "the Title row is the required level");
-  assert.equal(orgCheck("Chapter").checked, false);
-  assert.equal(orgInput("Chapter").disabled, true, "an unchecked level takes no code");
+test("no jurisdiction can be renamed, re-kinded or added", () => {
+  const group = jurGroup("Kentucky");
+  const head = byClass(group, "jur-head")[0];
+  assert.equal(byClass(head, "jur-name")[0].textContent, "Kentucky");
+  assert.equal(byClass(head, "jur-tag")[0].textContent, "State");
+  assert.equal(buttonNamed(head, "Edit"), undefined, "no rename control");
+  assert.equal(byClass($("chapters"), "edit-form").length, 0);
 });
 
 /* ---------- validation ---------- */
 
-test("adding needs the Title, a section number and some wording", async () => {
-  fillComposer({ paste: "(a) Every utility shall file." });
+test("adding needs a section number, a state where relevant, values and wording", async () => {
+  $("paste").value = "(a) Every utility shall file.";
   await click("add");
-  assert.match($("toast").textContent, /Enter the Title and section number\./,
-    "everything that is missing is named at once");
+  assert.match($("toast").textContent, /Enter the section number\./);
 
-  await setAnchor("42");
-  await click("add");
-  assert.match($("toast").textContent, /Enter the section number\./,
-    "the Title alone is not enough");
-
-  fillComposer({ paste: "(a) text", secNum: "1971" });
-  await setLevel("Chapter", "");
-  await click("add");
-  assert.match($("toast").textContent, /Enter 1\u20132 letters or numbers for the Chapter\./);
-
-  await setLevel("Chapter", "217");
-  await click("add");
-  assert.match($("toast").textContent, /The Chapter can only be 1\u20132 letters or numbers\./);
-
-  fillComposer({ secNum: "1971" });
+  await setLevel("Section", "1971");
+  $("paste").value = "";
   await click("add");
   assert.match($("toast").textContent, /Paste the statute or regulation text first\./);
 
-  assert.match($("sections").textContent, /No chapters yet/, "nothing is stored yet");
-});
-
-test("a Title outside 1 to 50 is refused even if it reaches the model", async () => {
-  await setLevel("Chapter", "21");
-  await setAnchor("51");
-  fillComposer({ paste: "(a) text", secNum: "1971" });
+  $("paste").value = "(a) text";
+  await setLevel("Chapter", "");
   await click("add");
-  assert.match($("toast").textContent, /A Title must be a number from 1 to 50\./);
-  assert.match($("sections").textContent, /No chapters yet/);
+  assert.match($("toast").textContent, /Enter a value for the Chapter\./);
+
+  await setLevel("Chapter", "21!");
+  await click("add");
+  assert.match($("toast").textContent,
+    /The Chapter can only use up to 12 letters, numbers, parentheses or hyphens\./);
+
+  await setLevel("Chapter", "1234567890123");
+  await click("add");
+  assert.match($("toast").textContent, /The Chapter can only use up to 12/);
+
+  await setKind("state");
+  await setLevel("Chapter", "21");
+  await click("add");
+  assert.match($("toast").textContent, /Choose the state\./, "a state jurisdiction needs the state");
+
+  await setKind("federal");
+  assert.match($("sections").textContent, /No chapters yet/, "nothing is stored yet");
 });
 
 /* ---------- adding ---------- */
 
-test("a section is filed under the Title and the checked levels", async () => {
-  await addSection({ anchor: "42", levels: { Chapter: "21" }, secNum: "1971", paste: "Every utility shall file." });
+test("a section is filed under the levels that were checked", async () => {
+  await addSection({
+    levels: { Title: ["42", "Civil Rights"], Chapter: "21", Section: ["1971", "Filing"] },
+    paste: "Every utility shall file."
+  });
 
-  assert.ok(clLabels().includes("Title 42 \u00b7 Chapter 21"));
-  assert.deepEqual(fedChapter("42").partValues, { Title: "42", Chapter: "21" });
-  assert.equal(fedChapter("42").title, "UNKNOWN");
-  assert.deepEqual(heads(), ["\u00a7 1971. UNKNOWN"]);
-  assert.equal(fedChapter("42").sections[0].number, "1971");
-  assert.equal($("secNum").value, "", "the section number is cleared for the next one");
-  assert.equal($("paste").value, "");
+  assert.ok(clLabels().includes("Title 42 \u2014 Civil Rights \u00b7 Chapter 21"));
+  assert.deepEqual(chapterAt("Title", "42").partValues, { Title: "42", Chapter: "21" });
+  assert.deepEqual(chapterAt("Title", "42").partTitles, { Title: "Civil Rights" });
+  assert.deepEqual(heads(), ["\u00a7 1971. Filing"]);
+  assert.equal(chapterOf("1971").sections[0].body, "Every utility shall file.");
+  assert.equal($("paste").value, "", "the paste is cleared for the next section");
+  assert.equal(orgValue("Section").value, "", "so is the section's own row");
 });
 
-test("the Title and the level codes stay put, so several sections share a chapter", async () => {
-  await addSection({ levels: { Chapter: "21", Subchapter: "IV" }, secNum: "1983", secTitle: "Civil action", paste: "(a) Every person shall be liable." });
+test("the organization stays put, so a run of sections shares a chapter", async () => {
+  assert.equal(orgValue("Title").value, "42");
+  assert.equal(orgValue("Chapter").value, "21");
 
-  assert.equal(anchorInput().value, "42", "the Title is still selected");
-  assert.equal(orgInput("Chapter").value, "21");
-  assert.equal(orgInput("Subchapter").value, "IV");
+  await addSection({ levels: { Section: ["1983", "Civil action"] }, paste: "(a) Every person shall be liable." });
+  await addSection({ levels: { Section: "1985" }, paste: "(a) Another section." });
 
-  await addSection({ secNum: "1985", paste: "(a) Another section." });
-  assert.equal(chapterOf("1983").sections.length, 2, "the same path merges into one chapter");
-  assert.deepEqual(chapterOf("1983").sections.map((s) => s.number), ["1983", "1985"]);
-  assert.ok(clLabels().includes("Title 42 \u00b7 Chapter 21 \u00b7 Subchapter IV"));
-  assert.ok(clLabels().includes("Title 42 \u00b7 Chapter 21"),
-    "with fewer levels checked the same Title and Chapter make a different chapter");
+  assert.equal(chapterOf("1983").sections.length, 3, "the same path merges into one chapter");
+  assert.deepEqual(chapterOf("1983").sections.map((s) => s.number), ["1971", "1983", "1985"]);
 });
 
-test("a section title supplied later backfills an UNKNOWN chapter", async () => {
-  await addSection({ chTitle: "Civil Rights", secNum: "1990", paste: "A filing must state the net income." });
-  assert.equal(chapterOf("1983").title, "Civil Rights");
-  assert.deepEqual(chapterOf("1983").sections.map((s) => s.number), ["1983", "1985", "1990"]);
+test("an extra organization level files the same names in a different area", async () => {
+  await addSection({ levels: { Subchapter: "IV", Section: "1983" }, paste: "(a) text" });
+  assert.equal(saved().chapters.length, 2);
+  assert.ok(clLabels().includes("Title 42 \u2014 Civil Rights \u00b7 Chapter 21 \u00b7 Subchapter IV"));
+
+  await unsetLevel("Subchapter");
+  await addSection({ levels: { Section: ["1983", ""] }, paste: "(a) text" });
+  assert.match($("toast").textContent, /Section 1983 is already in Title 42/);
 });
 
-test("a duplicate section number is refused", async () => {
-  await addSection({ secNum: "1983", paste: "(a) text" });
-  assert.match($("toast").textContent,
-    /Section 1983 is already in Title 42 \u00b7 Chapter 21 \u00b7 Subchapter IV\./);
-  assert.equal(chapterOf("1983").sections.length, 3);
+test("a subsection makes 1983(a) and 1983(b) different sections", async () => {
+  await addSection({ levels: { Section: ["1983", ""], Subsection: ["a", "First"] }, paste: "(a) text" });
+  await addSection({ levels: { Section: ["1983", ""], Subsection: ["b", "Second"] }, paste: "(b) text" });
+
+  const chapter = chapterOf("1983");
+  assert.deepEqual(chapter.sections.filter((s) => s.subsection)
+    .map((s) => s.number + "(" + s.subsection + ")"), ["1983(a)", "1983(b)"]);
+  assert.ok(heads().includes("\u00a7 1983(a). First"));
+  assert.ok(heads().includes("\u00a7 1983(b). Second"));
 });
 
 /* ---------- clause rendering ---------- */
 
 test("a subclause is indented once per nesting level and keeps a space after its label", async () => {
+  await unsetLevel("Subsection");
   await addSection({
-    secNum: "2000", secTitle: "Nesting",
+    levels: { Section: ["2000", "Nesting"] },
     paste: "(a) The board shall act.\n    (1) Records shall be kept.\n        (i) A record is public."
   });
 
@@ -240,201 +252,128 @@ test("a subclause is indented once per nesting level and keeps a space after its
 
 /* ---------- edits ---------- */
 
-test("a section's number and title can be edited after it was added", async () => {
+test("a section's number, title and subsection can be edited after it was added", async () => {
   await clickNode(buttonNamed(sectByHead("\u00a7 2000. Nesting"), "Edit"));
-  let form = openEditor($("sections"));
-  const [num, title] = inputs(form);
-  assert.equal(num.value, "2000");
-  assert.equal(title.value, "Nesting");
+  const form = openEditor($("sections"));
+  const fields = inputs(form);
+  assert.deepEqual(fields.map((f) => f.value), ["2000", "Nesting", "", ""]);
 
-  num.value = "1999";
-  title.value = "Renamed";
+  fields[0].value = "1999";
+  fields[1].value = "Renamed";
+  fields[2].value = "ii";
   await clickNode(buttonNamed(form, "Save"));
 
-  assert.ok(heads().includes("\u00a7 1999. Renamed"), "re-sorted after the rename");
+  assert.ok(heads().includes("\u00a7 1999(ii). Renamed"), "the designation follows the subsection");
   assert.equal(openEditor($("sections")), undefined, "editor closes");
 });
 
-test("cancelling a section edit changes nothing, Enter saves and Escape cancels", async () => {
-  await clickNode(buttonNamed(sectByHead("\u00a7 1999. Renamed"), "Edit"));
-  let form = openEditor($("sections"));
-  inputs(form)[0].value = "999";
-  await clickNode(buttonNamed(form, "Cancel"));
-  assert.ok(heads().includes("\u00a7 1999. Renamed"));
-
-  await clickNode(buttonNamed(sectByHead("\u00a7 1999. Renamed"), "Edit"));
-  form = openEditor($("sections"));
-  inputs(form)[1].value = "By Enter";
-  await press(inputs(form)[1], "Enter");
-  assert.ok(heads().includes("\u00a7 1999. By Enter"));
-
-  await clickNode(buttonNamed(sectByHead("\u00a7 1999. By Enter"), "Edit"));
-  form = openEditor($("sections"));
-  inputs(form)[1].value = "Discarded";
-  await press(inputs(form)[1], "Escape");
-  assert.ok(heads().includes("\u00a7 1999. By Enter"));
-});
-
 test("a section's number cannot be cleared", async () => {
-  await clickNode(buttonNamed(sectByHead("\u00a7 1999. By Enter"), "Edit"));
+  await clickNode(buttonNamed(sectByHead("\u00a7 1999(ii). Renamed"), "Edit"));
   let form = openEditor($("sections"));
   assert.equal(byClass(form, "edit-label")[0].textContent, "Section number *",
     "the editor marks the number required");
 
   inputs(form)[0].value = "";
-  inputs(form)[1].value = "Untitled";
   await clickNode(buttonNamed(form, "Save"));
-  assert.match($("toast").textContent, /Enter the section number\./);
+  assert.match($("toast").textContent, /Enter a value for the Section\./);
   assert.ok(openEditor($("sections")), "the editor stays open so the number can be typed");
 
   form = openEditor($("sections"));
   inputs(form)[0].value = "1999";
+  inputs(form)[2].value = "";
   await clickNode(buttonNamed(form, "Save"));
-  assert.ok(heads().includes("\u00a7 1999. Untitled"));
+  assert.ok(heads().includes("\u00a7 1999. Renamed"));
 });
 
-test("editing a section onto an existing number is refused", async () => {
-  await clickNode(buttonNamed(sectByHead("\u00a7 1999. Untitled"), "Edit"));
+test("editing a section onto an existing designation is refused", async () => {
+  await clickNode(buttonNamed(sectByHead("\u00a7 1999. Renamed"), "Edit"));
   const form = openEditor($("sections"));
   inputs(form)[0].value = "1983";
   await clickNode(buttonNamed(form, "Save"));
 
-  assert.match($("toast").textContent, /Section 1983 is already in Title 42 \u00b7 Chapter 21 \u00b7 Subchapter IV\./);
+  assert.match($("toast").textContent, /Section 1983 is already in Title 42/);
   const stillOpen = openEditor($("sections"));
   assert.ok(stillOpen, "editor stays open so the clash can be fixed");
   await clickNode(buttonNamed(stillOpen, "Cancel"));
 });
 
-test("a chapter's organization can be edited in the sidebar", async () => {
-  await clickNode(buttonNamed(chapterRow("Title 42 \u00b7 Chapter 21"), "Edit"));
+test("a chapter's organizational levels can be edited after the fact", async () => {
+  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21"), "Edit organizational levels"));
   const form = openEditor($("chapters"));
   const host = byClass(form, "org-tree")[0];
-
-  assert.equal(anchorInput(host).value, "42");
-  assert.equal(orgInput("Chapter", host).value, "21");
+  assert.deepEqual(orgLevels(host),
+    ["Title", "Subtitle", "Division", "Chapter", "Subchapter", "Part", "Subpart"],
+    "Section and Subsection belong to a section, not the chapter");
+  assert.equal(orgValue("Title", host).value, "42");
   assert.equal(orgCheck("Subchapter", host).checked, false);
 
-  anchorInput(host).value = "15";
-  orgInput("Chapter", host).value = "217";
+  orgValue("Chapter", host).value = "1234567890123";
   await clickNode(buttonNamed(form, "Save"));
-  assert.match($("toast").textContent, /The Chapter can only be 1\u20132 letters or numbers\./);
-  assert.ok(openEditor($("chapters")), "the editor stays open so the code can be fixed");
+  assert.match($("toast").textContent, /The Chapter can only use up to 12/);
+  assert.ok(openEditor($("chapters")), "the editor stays open so the value can be fixed");
 
   const reopen = openEditor($("chapters"));
-  orgInput("Chapter", reopen).value = "10";
+  orgValue("Chapter", reopen).value = "21";
+  orgValue("Title", reopen).value = "15";
   await clickNode(buttonNamed(reopen, "Save"));
 
-  assert.ok(clLabels().includes("Title 15 \u00b7 Chapter 10"));
-  assert.equal(fedChapter("15").title, "UNKNOWN");
-  assert.equal(clLabels().includes("Title 42 \u00b7 Chapter 21"), false,
+  assert.ok(clLabels().includes("Title 15 \u2014 Civil Rights \u00b7 Chapter 21"));
+  assert.equal(clLabels().includes("Title 42 \u2014 Civil Rights \u00b7 Chapter 21"), false,
     "the path moved, it was not copied");
 });
 
 test("editing a chapter onto an existing path is refused", async () => {
-  await clickNode(buttonNamed(chapterRow("Title 15 \u00b7 Chapter 10"), "Edit"));
-  let form = openEditor($("chapters"));
+  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21 \u00b7 Subchapter IV"), "Edit organizational levels"));
+  const form = openEditor($("chapters"));
   const host = byClass(form, "org-tree")[0];
-  anchorInput(host).value = "42";
-  orgInput("Chapter", host).value = "21";
-  const box = orgCheck("Subchapter", host);
-  box.checked = true;
-  await dispatch(box, "change");
-  orgInput("Subchapter", host).value = "IV";
+  orgValue("Title", host).value = "15";
+  const sub = orgCheck("Subchapter", host);
+  sub.checked = false;
+  await dispatch(sub, "change");
   await clickNode(buttonNamed(form, "Save"));
 
-  assert.match($("toast").textContent, /That chapter already exists in this jurisdiction\./);
-  form = openEditor($("chapters"));
-  assert.ok(form, "the editor stays open so the clash can be fixed");
-  await clickNode(buttonNamed(form, "Cancel"));
-  assert.ok(clLabels().includes("Title 15 \u00b7 Chapter 10"));
+  assert.match($("toast").textContent, /That organization path already exists in this jurisdiction\./);
+  const stillOpen = openEditor($("chapters"));
+  assert.ok(stillOpen, "the editor stays open so the clash can be fixed");
+  await clickNode(buttonNamed(stillOpen, "Cancel"));
+  assert.ok(clLabels().includes("Title 42 \u2014 Civil Rights \u00b7 Chapter 21 \u00b7 Subchapter IV"));
 });
 
 /* ---------- states ---------- */
 
-test("a state jurisdiction anchors on Chapter and takes a chapter number", async () => {
-  await pickJurisdiction("kentucky");
-  assert.equal($("chTitleLabel").textContent, "Chapter title");
-  assert.match($("hint").textContent, /Only the Chapter and the section number are required/);
-  assert.equal(anchorLevel(), "Chapter");
-  assert.equal(anchorInput().tagName, "INPUT");
+test("a state files under whatever levels it has — no Title required", async () => {
+  await addSection({
+    kind: "state", state: "kentucky",
+    off: ["Title", "Subchapter"],
+    levels: { Chapter: ["7", "Public Utilities"], Section: ["7-1", "Application"] },
+    paste: "This chapter applies to every public utility."
+  });
 
-  await addSection({ paste: "A tax is imposed on every resident.", secNum: "7-1" });
-  assert.match($("toast").textContent, /Enter the Chapter\./);
+  assert.equal(chapterOf("7-1").jurisdiction, "kentucky");
+  assert.ok(clLabels().includes("Chapter 7 \u2014 Public Utilities"));
+  assert.equal(chapterAt("Chapter", "7").partValues.Title, undefined, "no Title for a state");
 
-  const before = saved().chapters.length;
-  await addSection({ anchor: "7", levels: { Chapter: "7" }, paste: "A tax is imposed.", secNum: "" });
-  assert.match($("toast").textContent, /Enter the section number\./, "a state needs a section number too");
-  assert.equal(saved().chapters.length, before);
+  // A Title is still available if a state happens to use one.
+  await addSection({ off: ["Chapter"], levels: { Title: "12", Section: "12-1" }, paste: "A tax is imposed." });
+  assert.equal(chapterAt("Title", "12").jurisdiction, "kentucky");
 
-  await addSection({ anchor: "7", levels: { Subchapter: "I" }, paste: "A tax is imposed.", secNum: "7-1" });
-  assert.equal(kyChapter("7").jurisdiction, "kentucky");
-  assert.ok(clLabels().includes("Chapter 7 \u00b7 Subchapter I"));
-  assert.equal(kyChapter("7").sections[0].title, "UNKNOWN");
+  await setKind("federal");
 });
 
-test("the sidebar's jurisdiction editor renames a jurisdiction", async () => {
-  await clickNode(buttonNamed(byClass(jurGroup("Kentucky"), "jur-head")[0], "Edit"));
-  const form = openEditor($("chapters"));
-  assert.deepEqual(byClass(form, "edit-input").map((e) => e.tagName), ["INPUT", "SELECT"],
-    "a name and a kind, nothing else");
-  inputs(form)[0].value = "Commonwealth of Kentucky";
-  await clickNode(buttonNamed(form, "Save"));
-
-  assert.ok(jurGroup("Commonwealth of Kentucky"));
-  assert.equal(jurGroup("Kentucky"), undefined);
-  assert.equal(saved().jurisdictions.find((j) => j.key === "kentucky").name, "Commonwealth of Kentucky");
-});
-
-/* ---------- sample, definitions, export ---------- */
-
-test("load sample: jurisdictions, chapter order, definitions", async () => {
-  await click("sample");
-
-  assert.equal(jurNames().length, 51);
-  assert.equal(jurNames()[0], "Federal");
-  assert.ok(jurNames().includes("Kentucky"));
-  assert.deepEqual(clLabels(),
-    ["Title 42 \u00b7 Chapter 21 \u00b7 Subchapter IV", "Chapter 7", "Chapter 12"]);
-  assert.deepEqual(heads(), [
-    "\u00a7 7-4. Certificates",
-    "\u00a7 7-1. Application",
-    "\u00a7 7-3. Rate filings",
-    "\u00a7 7-2. Definitions"
-  ]);
-
-  // The section that defines a term must not highlight that term in its own
-  // definitions — only where it turns up inside a DIFFERENT definition.
-  const definitions = sectByHead("\u00a7 7-2. Definitions");
-  assert.deepEqual(marksIn(definitions), ["Authority", "certificate"],
-    "only the references inside the \u201CRate\u201D definition are highlighted");
-
-  // Other sections highlight everything, case-insensitively, including the
-  // second term of a multi-term definition.
-  const application = marksIn(sectByHead("\u00a7 7-1. Application"));
-  assert.ok(application.includes("authority"), "lowercase use of a defined term is highlighted");
-  assert.ok(application.includes("certificate of public convenience and necessity"));
-});
-
-test("the sample's nested clauses are indented one step per level", () => {
-  const clauses = byClass(sectByHead("\u00a7 7-1. Application"), "clause");
-  assert.deepEqual(clauses.map((p) => p.style.paddingLeft),
-    ["0rem", "0rem", "1.5rem", "1.5rem", "0rem"]);
-});
+/* ---------- export ---------- */
 
 test("export chapter: standalone, styled and free of editing chrome", async () => {
+  await clickNode(chapterBtn("Chapter 7 \u2014 Public Utilities"));
   await click("xOne");
   assert.equal(dom.downloads.at(-1).download, "kentucky-7.html");
 
   const html = dom.exportedHtml();
   assert.match(html, /^<!doctype html>/);
+  assert.ok(html.includes("<title>Chapter 7 \u2014 Public Utilities</title>"), "titles the page by its path");
   assert.ok(html.includes(":root{ --bg:#efece6;"), "inlines styles/doc.css");
   assert.ok(html.includes('<div class="doc"><div class="page">'));
   assert.ok(html.includes('<h3 class="chapter-head">Chapter 7 \u2014 Public Utilities</h3>'));
-  assert.ok(html.includes('<h4 class="sect-head">\u00a7 7-2. Definitions</h4>'));
-  assert.ok(html.includes("Kentucky \u00b7 4 sections"), "names the jurisdiction");
-  assert.ok(html.includes('<mark class="term">Authority</mark>'));
-  assert.ok(html.includes('<b class="clause-num">(a)</b> <span>The '),
-    "the clause label keeps its space in the export");
+  assert.ok(html.includes("Kentucky \u00b7 1 section"), "names the jurisdiction");
   assert.ok(!html.includes("<script") && !html.includes("<link"), "self-contained: no external refs");
   assert.ok(!html.includes("edit-form") && !html.includes("org-tree"), "no editor markup leaks into the export");
   assert.ok(!html.includes(">Edit</button>"), "no edit buttons leak into the export");
@@ -443,16 +382,16 @@ test("export chapter: standalone, styled and free of editing chrome", async () =
 test("export all writes one file per chapter, named by jurisdiction and path", async () => {
   const before = dom.downloads.length;
   await click("xAll");
-  assert.equal(dom.downloads.length, before + 3);
-  assert.deepEqual(dom.downloads.slice(-3).map((d) => d.download),
-    ["kentucky-7.html", "kentucky-12.html", "federal-42-21-IV.html"]);
+  assert.deepEqual(dom.downloads.slice(before).map((d) => d.download).sort(),
+    ["federal-15-21.html", "federal-42-21-IV.html", "kentucky-12.html", "kentucky-7.html"]);
 });
 
 /* ---------- persistence ---------- */
 
 test("persisted state keeps raw bodies and the seeded jurisdictions", () => {
   assert.equal(saved().jurisdictions.length, 51);
-  assert.ok(saved().chapters[0].sections.every((s) => !s.body.includes("<mark")), "bodies stay raw");
+  assert.ok(saved().chapters.every((c) => c.sections.every((s) => !s.body.includes("<mark"))),
+    "bodies stay raw");
 });
 
 test("clear all empties the document but keeps Federal and the states", async () => {
@@ -466,9 +405,8 @@ test("clear all empties the document but keeps Federal and the states", async ()
 /* ---------- normalization ---------- */
 
 test("a soft-wrapped paste is unwrapped but keeps its structure", async () => {
-  await pickJurisdiction("federal");
   await addSection({
-    anchor: "9", levels: { Chapter: "1" }, secNum: "9-1",
+    levels: { Title: "9", Chapter: "1", Section: "9-1" },
     paste: "The authority shall review each application within 60 days\n" +
       "of receipt of a complete filing. It shall then\n" +
       "issue a decision.\n\n" +
@@ -476,11 +414,29 @@ test("a soft-wrapped paste is unwrapped but keeps its structure", async () => {
       "    (1) Records shall be kept."
   });
 
-  const stored = fedChapter("9").sections[0].body;
-  assert.equal(stored,
+  assert.equal(chapterAt("Title", "9").sections[0].body,
     "The authority shall review each application within 60 days of receipt of a complete filing. " +
     "It shall then issue a decision.\n\n" +
     "(a) The board shall act.\n" +
     "    (1) Records shall be kept.",
     "prose wraps joined, paragraph break and indented item kept");
+});
+
+/* ---------- definitions ---------- */
+
+test("definitions highlight across a chapter, in order independent of insertion", async () => {
+  await addSection({
+    levels: { Section: ["1101", "Definitions"] },
+    paste: "\u201CAuthority\u201D means the board.\n\u201CFee\u201D means a charge set by the Authority."
+  });
+  await addSection({
+    levels: { Section: ["1102", "Application"] },
+    paste: "The Fee applies to every utility, and the Authority shall collect it."
+  });
+
+  // The defining section does not highlight its own definitions, except inside
+  // a different definition.
+  assert.deepEqual(marksIn(sectByHead("\u00a7 1101. Definitions")), ["Authority"]);
+  const application = marksIn(sectByHead("\u00a7 1102. Application"));
+  assert.ok(application.includes("Fee") && application.includes("Authority"));
 });

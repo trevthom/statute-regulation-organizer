@@ -3,86 +3,52 @@
    sidebar use for their edit buttons. */
 
 import {
-  addJurisdiction, addSection, anchorOf, currentChapter, emptyState, findJurisdiction, partPath,
-  sampleData, updateChapter, updateJurisdiction, updateSection
+  LEVEL_MAX, addSection, currentChapter, emptyState, findJurisdiction, partPath,
+  updateChapter, updateSection
 } from "../core/model.js";
 import { normalizeBody } from "../core/text.js";
 import { save } from "../storage/local.js";
 import { exportChapter } from "../export/html.js";
-import { mountOrgTree, readOrg, renderComposerLabels, toast } from "./render.js";
+import { readOrg, resetSectionRows, toast } from "./render.js";
 
 const $ = (id) => document.getElementById(id);
 
-function joinList(items) {
-  if (items.length === 1) return items[0];
-  return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
-}
+/* Only the Section row is required (it carries the section number), plus the
+   state when the statute is filed under a state. */
+const NOTE = "Only the section number is required. Every other level you check takes up to " +
+  LEVEL_MAX + " letters, numbers, parentheses or hyphens, and an optional title.";
 
-function selectedJurisdiction(state) {
-  return findJurisdiction(state, $("jurisdiction").value) || state.jurisdictions[0] || null;
-}
-
-/* The two required fields: the anchor (a federal Title from 1 to 50, or a
-   state's chapter) and the section number. */
-function defaultNote(state) {
-  const j = selectedJurisdiction(state);
-  const anchor = anchorOf(j);
-  const federal = !!j && j.kind === "federal";
-  return "Only the " + anchor + " and the section number are required" +
-    (federal ? " \u2014 a Title is 1 to 50" : "") +
-    ". Every level you check takes 1\u20132 letters or numbers; titles are optional.";
-}
-
-let note = "";
 function hint(message) {
-  $("hint").textContent = message || note;
+  $("hint").textContent = message || NOTE;
 }
 
 function chapterLabel(state, ch) {
   const j = findJurisdiction(state, ch.jurisdiction);
-  return partPath(j, ch.partValues) || anchorOf(j);
+  return partPath(ch.partValues, ch.partTitles) || (j ? j.name : "this jurisdiction");
 }
 
-/* What a rejected organization path means to the user. */
-function orgMessage(anchor, result) {
-  if (result.field === "anchor") {
-    return result.reason === "range"
-      ? "A Title must be a number from 1 to 50."
-      : "Choose the " + anchor + ".";
-  }
+/* What a rejected organization row means to the user. */
+function orgMessage(result) {
   return result.reason === "missing"
-    ? "Enter 1\u20132 letters or numbers for the " + result.level + "."
-    : "The " + result.level + " can only be 1\u20132 letters or numbers.";
+    ? "Enter a value for the " + result.level + "."
+    : "The " + result.level + " can only use up to " + LEVEL_MAX +
+      " letters, numbers, parentheses or hyphens.";
 }
 
-/* Keep the composer's labels, organization tree and hint in step with the
-   selected jurisdiction. */
-function updateComposer(state) {
-  const j = selectedJurisdiction(state);
-  renderComposerLabels(j);
-  mountOrgTree(j);
-  note = defaultNote(state);
-  hint("");
-}
-
-/* Refuse to add before touching state when a required field is empty, and say
-   everything that is missing at once. The model checks the same things, so a
-   caller that skips this cannot sneak a section in. */
-function missingRequired(org, jurisdiction) {
-  const anchor = anchorOf(jurisdiction);
-  const missing = [];
-  if (!org.values[anchor]) missing.push(anchor);
-  if (!$("secNum").value.trim()) missing.push("section number");
-  return missing.length ? "Enter the " + joinList(missing) + "." : "";
+/* Refuse to add before touching state when a required field is empty. The model
+   checks the same things, so a caller that skips this cannot sneak a section
+   in. */
+function missingRequired(org) {
+  if (org.kind === "state" && !org.jurisdictionKey) return "Choose the state.";
+  if (!org.values.Section) return "Enter the section number.";
+  return "";
 }
 
 function onAdd(app) {
   const state = app.getState();
-  const jurisdiction = selectedJurisdiction(state);
-  const anchor = anchorOf(jurisdiction);
-
   const org = readOrg();
-  const missing = missingRequired(org, jurisdiction);
+
+  const missing = missingRequired(org);
   if (missing) {
     hint(missing);
     toast(missing, "warn");
@@ -97,23 +63,21 @@ function onAdd(app) {
   }
 
   const result = addSection(state, {
-    jurisdiction: jurisdiction ? jurisdiction.key : "",
+    jurisdiction: org.jurisdictionKey,
     partValues: org.values,
+    partTitles: org.titles,
     checked: org.checked,
-    chapterTitle: $("chTitle").value.trim(),
-    number: $("secNum").value.trim(),
-    title: $("secTitle").value.trim(),
     body
   });
   save(state);
 
   if (result.status === "no-jurisdiction") {
-    hint("Add a jurisdiction first.");
-    toast("Add a jurisdiction in the sidebar first.", "warn");
+    hint("Choose the state.");
+    toast("Choose the state.", "warn");
     return;
   }
   if (result.status === "invalid") {
-    const message = result.field === "number" ? "Enter the section number." : orgMessage(anchor, result);
+    const message = orgMessage(result);
     hint(message);
     toast(message, "warn");
     return;
@@ -125,14 +89,11 @@ function onAdd(app) {
     return;
   }
 
-  $("chTitle").value = "";
-  $("secNum").value = "";
-  $("secTitle").value = "";
   $("paste").value = "";
+  resetSectionRows();
   hint("");
   app.render();
-  toast("Added " + (result.number ? "\u00a7 " + result.number : "the section") +
-    " to " + chapterLabel(state, result.chapter) + ".", "ok");
+  toast("Added \u00a7 " + result.number + " to " + chapterLabel(state, result.chapter) + ".", "ok");
 }
 
 function setEditing(app, next) {
@@ -144,21 +105,19 @@ function setEditing(app, next) {
 
 function saveChapterEdit(app, id, draft) {
   const state = app.getState();
-  const ch = state.chapters.find((c) => c.id === id);
-  const anchor = anchorOf(ch && findJurisdiction(state, ch.jurisdiction));
   const result = updateChapter(state, id, draft);
-  if (result.status === "invalid") { toast(orgMessage(anchor, result), "warn"); return; }
-  if (result.status === "duplicate") { toast("That chapter already exists in this jurisdiction.", "warn"); return; }
+  if (result.status === "invalid") { toast(orgMessage(result), "warn"); return; }
+  if (result.status === "duplicate") { toast("That organization path already exists in this jurisdiction.", "warn"); return; }
   if (result.status === "missing") { setEditing(app, null); return; }
   save(state);
   setEditing(app, null);
-  toast("Chapter updated.", "ok");
+  toast("Organizational levels updated.", "ok");
 }
 
 function saveSectionEdit(app, id, draft) {
   const state = app.getState();
   const result = updateSection(state, id, draft);
-  if (result.status === "invalid") { toast("Enter the section number.", "warn"); return; }
+  if (result.status === "invalid") { toast(orgMessage(result), "warn"); return; }
   if (result.status === "duplicate") {
     toast("Section " + result.number + " is already in " + chapterLabel(state, result.chapter) + ".", "warn");
     return;
@@ -169,30 +128,12 @@ function saveSectionEdit(app, id, draft) {
   toast("Section updated.", "ok");
 }
 
-/* ---------- jurisdiction edits ---------- */
-
-function saveJurisdictionEdit(app, name, kind) {
-  const state = app.getState();
-  const ed = app.getView().editing;
-  if (!ed || ed.type !== "jurisdiction") return;
-  const draft = { name, kind };
-  const result = ed.key == null ? addJurisdiction(state, draft) : updateJurisdiction(state, ed.key, draft);
-  if (result.status === "invalid") { toast("Jurisdiction name cannot be empty.", "warn"); return; }
-  if (result.status === "duplicate") { toast("A jurisdiction with that name already exists.", "warn"); return; }
-  if (result.status === "missing") { setEditing(app, null); return; }
-  save(state);
-  setEditing(app, null);
-  toast("Jurisdiction saved.", "ok");
-}
-
 /* ---------- wiring ---------- */
 
 export function initEvents(app) {
-  note = defaultNote(app.getState());
   hint("");
 
   $("add").addEventListener("click", () => onAdd(app));
-  $("jurisdiction").addEventListener("change", () => updateComposer(app.getState()));
 
   $("xOne").addEventListener("click", () => {
     const state = app.getState();
@@ -207,19 +148,6 @@ export function initEvents(app) {
     for (const ch of state.chapters) exportChapter(ch, findJurisdiction(state, ch.jurisdiction));
   });
 
-  $("addJurisdiction").addEventListener("click", () => {
-    setEditing(app, { type: "jurisdiction", key: null, draft: { name: "", kind: "state" } });
-  });
-
-  $("sample").addEventListener("click", () => {
-    app.setState(sampleData());
-    app.getView().editing = null;
-    save(app.getState());
-    app.render();
-    updateComposer(app.getState());   // the anchor and note follow the new selection
-    toast("Sample loaded.", "ok");
-  });
-
   $("clear").addEventListener("click", () => {
     if (!app.getState().chapters.length) return;
     if (!confirm("Delete all chapters and sections? This cannot be undone.")) return;
@@ -227,7 +155,7 @@ export function initEvents(app) {
     app.getView().editing = null;
     save(app.getState());
     app.render();
-    updateComposer(app.getState());
+    hint("");
   });
 
   return {
@@ -240,17 +168,6 @@ export function initEvents(app) {
     onEditSection(id) { setEditing(app, { type: "section", id }); },
     onCancelEdit() { setEditing(app, null); },
     onSaveChapter(id, draft) { saveChapterEdit(app, id, draft); },
-    onSaveSection(id, draft) { saveSectionEdit(app, id, draft); },
-
-    onEditJurisdiction(key) {
-      const j = findJurisdiction(app.getState(), key);
-      if (!j) return;
-      setEditing(app, {
-        type: "jurisdiction",
-        key: j.key,
-        draft: { name: j.name, kind: j.kind }
-      });
-    },
-    onSaveJurisdiction(name, kind) { saveJurisdictionEdit(app, name, kind); }
+    onSaveSection(id, draft) { saveSectionEdit(app, id, draft); }
   };
 }

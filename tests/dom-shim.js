@@ -146,10 +146,7 @@ export function installDom() {
 
   const ids = [...readFileSync(new URL("../index.html", import.meta.url), "utf8")
     .matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-  const tags = {
-    paste: "textarea", jurisdiction: "select", chTitle: "input",
-    secNum: "input", secTitle: "input", parts: "div"
-  };
+  const tags = { paste: "textarea", parts: "div" };
   for (const id of ids) document.register(id, tags[id]);
 
   globalThis.document = document;
@@ -172,7 +169,7 @@ export function installDom() {
     get blobs() { return blobs; },
     get downloads() { return downloads; },
     savedState() {
-      const raw = store.get("chapterBuilder.v3");
+      const raw = store.get("chapterBuilder.v4");
       return raw ? JSON.parse(raw) : null;
     },
     exportedHtml(i) {

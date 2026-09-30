@@ -35,20 +35,23 @@ input,textarea,select{font:inherit;color:inherit;background:#fff;border:1px soli
 .composer{background:#fff;border-bottom:1px solid var(--line);padding:1rem 1.15rem .9rem}
 .composer label.top{display:block;font-size:.78rem;font-weight:600;margin-bottom:.35rem;color:var(--muted)}
 #paste{min-height:8rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;overflow-wrap:normal;overflow-x:auto}
-.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.5rem;margin-top:.6rem}
-.fields label{font-size:.7rem;color:var(--muted);display:block}
-.fields input,.fields select{font-size:.85rem;padding:.35rem .45rem}
-/* ---------- organization tree ---------- */
-.org{margin-top:.6rem;border:1px solid var(--line);border-radius:8px;background:#faf8f4;padding:.55rem .7rem .65rem}
+/* ---------- organization layer ---------- */
+.org{margin-top:.7rem;border:1px solid var(--line);border-radius:8px;background:#faf8f4;padding:.6rem .75rem .7rem}
 .org:empty{display:none}
-.org-caption{display:block;font-size:.7rem;color:var(--muted);margin-bottom:.45rem}
-.org-tree{display:grid;gap:.22rem}
-.org-row{display:flex;align-items:center;gap:.55rem}
+.org-caption{display:block;font-size:.7rem;color:var(--muted);margin-bottom:.5rem}
+.org-juris{display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;padding-bottom:.55rem;margin-bottom:.6rem;border-bottom:1px dashed var(--line)}
+.org-juris-field{display:flex;align-items:center;gap:.45rem}
+.org-juris-label{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.org-juris select{width:auto;min-width:9.5rem;font-size:.82rem;padding:.25rem .4rem}
+.org-juris select:disabled{opacity:.45}
+.org-tree{display:grid;gap:.24rem}
+.org-row{display:flex;align-items:center;gap:.5rem}
 .org-pick{display:flex;align-items:center;gap:.4rem;flex:0 0 7.6rem;font-size:.8rem;color:var(--ink);cursor:pointer}
 .org-pick input[type=checkbox]{width:auto;flex:0 0 auto;padding:0;margin:0}
-.org-row .org-input{width:7rem;flex:0 0 auto;font-size:.8rem;padding:.25rem .4rem}
-.org-row.anchor .org-name{font-weight:600}
-.org-row.anchor .org-input{width:9rem}
+.org-row .org-input{flex:0 0 auto;font-size:.8rem;padding:.25rem .4rem}
+.org-row .org-value{width:7.5rem}
+.org-row .org-title{width:13rem;flex:1 1 auto}
+.org-row.forced .org-name{font-weight:600}
 .hint{font-size:.74rem;color:var(--muted);margin-top:.5rem;min-height:1.1em}
 .composer-row{display:flex;gap:.9rem;align-items:center;flex-wrap:wrap;margin-top:.6rem}
 .composer-row .spacer{flex:1}
@@ -60,6 +63,7 @@ input,textarea,select{font:inherit;color:inherit;background:#fff;border:1px soli
 /* ---------- inline editing ---------- */
 .chap-row{display:flex;align-items:flex-start;gap:.2rem;margin-bottom:2px}
 .chap-row .chap-btn{flex:1;min-width:0;margin-bottom:0}
+.chap-row button.mini{white-space:normal;text-align:right;line-height:1.15;font-size:.66rem;max-width:6.5rem}
 button.mini{flex:0 0 auto;background:transparent;border-color:transparent;border-radius:5px;
             font-size:.72rem;padding:.2rem .35rem;opacity:.5}
 button.mini:hover{opacity:1;background:rgba(255,255,255,.09)}
@@ -68,6 +72,7 @@ button.mini:hover{opacity:1;background:rgba(255,255,255,.09)}
 .sect-head-row button.mini:hover{background:#f6f3ee;color:var(--ink)}
 .edit-form{display:grid;gap:.45rem;background:#faf8f4;border:1px solid var(--line);
            border-radius:8px;padding:.6rem .65rem;margin:.3rem 0 .6rem}
+.edit-note{font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .edit-field{display:grid;gap:.15rem}
 .edit-label{font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .edit-input{font-size:.85rem;padding:.3rem .4rem}

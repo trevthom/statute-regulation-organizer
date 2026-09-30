@@ -39,7 +39,7 @@ src/core/text.js            normalizeBody: unwrap soft wraps, repair hyphen spli
 src/core/sort.js            naturalKey, naturalCmp (natural ordering)
 src/core/definitions.js     Definition units, term extraction, suppression, highlight runs
 src/core/nesting.js         Clause indent/marker depth analysis + clause body offsets
-src/ui/render.js            All DOM building: sidebar, organization tree, jurisdiction/chapter/section editors, body
+src/ui/render.js            All DOM building: sidebar, organization layer, chapter/section editors, body
 src/ui/events.js            All addEventListener wiring and the render handlers
 src/storage/local.js        load/save + STORE_KEY
 src/export/html.js          exportChapter + download; inlines doc.css into standalone HTML
@@ -62,7 +62,7 @@ be pure, and test it in `core.test.js`.
 
 ## Data model
 
-`state` (persisted under `chapterBuilder.v3`):
+`state` (persisted under `chapterBuilder.v4`):
 
 ```js
 {
@@ -71,76 +71,78 @@ be pure, and test it in `core.test.js`.
   ],
   chapters: [
     { id, jurisdiction: <jurisdiction.key>,
-      partValues: { Title: "42", Chapter: "21", Subchapter: "IV" },  // only the levels used
-      title: "Civil Rights",
-      sections: [ { id, number: "1983", title: "…", body: "…" } ] }
+      partValues: { Title: "42", Chapter: "21" },   // the chapter levels that carry a value
+      partTitles: { Title: "Civil Rights" },         // each level's optional title
+      sections: [ { id, number: "1983", title: "…", subsection: "", subsectionTitle: "", body: "…" } ] }
   ],
   activeId: <chapter.id | null>       // which chapter the document pane shows
 }
 ```
 
 - **Organization hierarchy** (`ORG_LEVELS` in `model.js`) — the fixed, ordered
-  levels a statute is filed under, outermost first: `Title`, `Subtitle`,
+  levels every statute is filed under, outermost first: `Title`, `Subtitle`,
   `Division`, `Chapter`, `Subchapter`, `Part`, `Subpart`, `Section`,
-  `Subsection`. These names double as the keys of a chapter's `partValues`, so
-  **renaming one is a data migration, not a rename**. `orgLevel(name)`
-  canonicalizes a name (or returns `null` for a level that does not exist).
-- **Anchor** — exactly one level is required: `anchorOf(jurisdiction)` returns
-  `Title` for a federal jurisdiction and `Chapter` for a state, and the model
-  marks every other level as optional whatever the kind. A federal Title must be
-  a whole number from `TITLE_MIN` to `TITLE_MAX` (1-50) — the composer offers
-  exactly that list as a `<select>`; a state chapter number is free text.
-- **Codes** — an optional level carries a 1-2 letter/digit code (`CODE_MAX`,
-  `isValidCode`: `21`, `IV`, `A`). The composer sends the levels that are
-  ticked (`checked`) plus their codes (`partValues`), because "ticked but blank"
-  is an error the model has to see; `partValuesOf` stores only the levels that
-  actually carry a value.
+  `Subsection`. These names are also the keys of a chapter's `partValues` /
+  `partTitles`, so **renaming one is a data migration, not a rename**.
+  `orgLevel(name)` canonicalizes a name (or returns `null` for an unknown one).
+- **Chapter levels vs section levels** — `CHAPTER_LEVELS` is every level except
+  `SECTION_LEVELS` (`Section`, `Subsection`). The chapter levels organize a
+  chapter; the Section row carries the section's own number and the Subsection
+  row an optional deeper designation (so `§ 1983(a)` and `§ 1983(b)` can both
+  live in one chapter).
+- **Values** — nothing is automatic: a federal Title is *not* required, because
+  not every state has one. Every level the user ticks carries a value of up to
+  `LEVEL_MAX` (12) characters, letters/digits/parentheses/hyphens only
+  (`isValidLevelValue`). The composer sends exactly the levels that are ticked
+  (`checked`) plus their values (`partValues`) and titles (`partTitles`), because
+  "ticked but blank" is an error the model has to see; `pickChecked` keeps only
+  the ticked levels, so an unticked row's leftover text never reaches the path.
 - **Chapter** — the unit that groups sections. Its display designation is
-  `partPath(jurisdiction, partValues)` (e.g. `"Title 42 · Chapter 21"`), and its
-  identity within a jurisdiction is `chapterSignature` (the full path, in
-  hierarchy order), so `Title 42 Chapter 21` and `Title 42 Chapter 21 Subchapter
-  IV` are different chapters.
-- **Section** — `{ id, number, title, body }`. `body` is the raw, normalized
-  paste. `number` is **required** and must be unique within its chapter;
-  `compareSections` keeps the order natural (`7-2 < 7-10`) and is defensive about
-  a blank number in data migrated from an older store (it sorts last).
-- **Jurisdiction** — the top-level grouping shown in the sidebar. `emptyState()`
-  and `seedJurisdictions(list)` produce **Federal plus all 50 states** (`STATES`),
-  keeping any jurisdiction the user added. `sampleData()` seeds the same list
-  plus the demo chapters.
+  `partPath(partValues, partTitles)` (e.g. `"Title 42 — Civil Rights · Chapter
+  21"`), and its identity within a jurisdiction is `chapterSignature` (the
+  chapter-level path, in hierarchy order), so a section that fills in the same
+  levels with the same values joins that chapter and a different path starts
+  another one.
+- **Section** — `{ id, number, title, subsection, subsectionTitle, body }`.
+  `body` is the raw, normalized paste. `number` is **required** and the
+  designation `sectionKey(section)` (`number`, or `number(subsection)`) must be
+  unique within its chapter; `compareSections` keeps the order natural
+  (`7-2 < 7-10`) and is defensive about a blank number in data migrated from an
+  older store (it sorts last).
+- **Jurisdiction** — the top-level grouping shown in the sidebar. It is a
+  **closed list**: `emptyState()` and `seedJurisdictions(list)` produce Federal
+  plus all 50 states (`STATES`). There is no add or edit control — a state's
+  name and its `kind` are fixed.
 
-Constants and helpers in `src/core/model.js`: `uid`, `UNKNOWN`, `ORG_LEVELS`,
-`orgLevel`, `STATES`, `anchorOf`, `STATE_ANCHOR`, `FEDERAL_ANCHOR`, `TITLE_MIN`,
-`TITLE_MAX`, `CODE_MAX`, `isValidTitle`, `isValidCode`, `slugKey`,
-`makeJurisdiction`, `seedJurisdictions`, `emptyState`, `findJurisdiction`,
-`sortedJurisdictions`, `chaptersOf`, `chapterNumber`, `partValuesOf`,
-`chapterSignature`, `partPath`, `compareChapters`, `compareSections`,
-`chaptersInOrder`, `currentChapter`.
+Constants and helpers in `src/core/model.js`: `uid`, `ORG_LEVELS`,
+`SECTION_LEVELS`, `CHAPTER_LEVELS`, `LEVEL_MAX`, `isValidLevelValue`, `orgLevel`,
+`STATES`, `slugKey`, `makeJurisdiction`, `seedJurisdictions`, `emptyState`,
+`findJurisdiction`, `sortedJurisdictions`, `chaptersOf`, `chapterValues`,
+`chapterTitles`, `chapterSignature`, `partPath`, `compareChapters`,
+`sectionKey`, `compareSections`, `chaptersInOrder`, `currentChapter`.
 
 ### Mutations (all pure, all return a `{ status }` result)
 
-`addSection`, `updateChapter`, `updateSection`, `removeSection`,
-`addJurisdiction`, `updateJurisdiction`. Validation lives here (not only in the
-events layer): the shared `checkOrg` helper makes `addSection`/`updateChapter`
-return `invalid` with `field: "anchor"` when the anchor value is blank (or
-`reason: "range"` when a federal Title is not 1-50), and with `field: "level"`,
-`level` and `reason: "missing" | "format"` for a ticked level whose code is blank
-or is not 1-2 letters/digits. A blank section number is `invalid` with
-`field: "number"` (`addSection` and `updateSection` alike); one that already
-exists in the chapter returns `duplicate`.
+`addSection`, `updateChapter`, `updateSection`, `removeSection`. Validation lives
+here (not only in the events layer): the shared `checkOrg`/`checkLevel` helpers
+make `addSection`/`updateChapter`/`updateSection` return `invalid` with
+`field: "level"`, `level` and `reason: "missing" | "format"` for a ticked level
+whose value is blank or is not up to 12 letters/digits/parentheses/hyphens.
+`addSection` always treats `Section` as ticked, so a section can never be added
+without a number; a designation that already exists in the chapter returns
+`duplicate`.
 
 ## Required fields and defaults
 
-- **Only two fields are required**: the anchor (a federal **Title from 1 to 50**,
-  or a state **chapter number**) and the **section number** — plus non-empty
-  paste, and a code on every ticked organization level. The section title and the
-  chapter title are optional. `events.js` refuses an add that is missing a
-  required field before it touches state (`missingRequired`), and the model
-  refuses it too, so nothing can slip through.
-- A blank chapter title or section title **defaults to `UNKNOWN`**
-  (`cleanTitle` in `model.js`), on add *and* on edit. If a chapter already exists
-  with a real title, adding another section never overwrites it — a title
-  supplied later only backfills an `UNKNOWN` chapter.
+- **Only the Section row is required** — it carries the section number — plus
+  non-empty paste, a value on every level the user ticked, and the state when
+  the statute is filed under a state jurisdiction. Section and level titles are
+  optional. `events.js` refuses an add that is missing a required field before
+  it touches state (`missingRequired`), and the model refuses it too, so nothing
+  can slip through.
+- Every level's title is **free-form and optional**; a blank one simply is not
+  stored. Titles supplied later backfill the chapter (`partTitles` is merged),
+  so adding a second section never wipes a title already there.
 
 ## Invariants
 
@@ -149,6 +151,10 @@ exists in the chapter returns `duplicate`.
   punctuation, capitalization or citations — and joins soft line wraps back into
   sentences. Highlighting is never baked into stored state; it happens at render.
   Indentation is preserved because clause nesting depends on it.
+- **Chapters are matched by the levels that were selected.** `addSection` looks
+  for a chapter whose `chapterSignature` equals the path the user filled in and
+  joins it, so a statute that uses the same levels and values as an earlier one
+  is filed in the same area even if it is added much later.
 - **Definitions are chapter-wide.** Every render recomputes
   `chapterDefinitions(chapter)` from *all* sections and applies it to *every*
   section, so a definitions section added later retroactively highlights earlier
@@ -179,13 +185,18 @@ exists in the chapter returns `duplicate`.
   without a second copy or an extra request. It stays synchronous so the
   download happens inside the user's click.
 - **Section order is natural** (`7-1 < 7-2 < 7-10`); chapters sort by their
-  organization values in hierarchy order, then by title, within their
-  jurisdiction. The section number is required, so no new section can be
+  organization values in hierarchy order, then by their level titles, within
+  their jurisdiction. The section number is required, so no new section can be
   unnumbered.
 - **Nothing is derived or guessed.** A chapter is filed under exactly the levels
-  the user ticked and the codes they typed — there are no section-number ranges
-  and no inferred values. Ticking a level and leaving it blank is an error, not
-  an omission.
+  the user ticked and the values they typed — nothing is inferred, and there are
+  no automatic levels. Ticking a level and leaving it blank is an error, not an
+  omission.
+- **The chapter and the section are keyed differently.** A chapter is
+  `chapterSignature(partValues)` over the chapter levels only, so a statute that
+  matches another statute's selected levels and values lands in the same area;
+  the section's own number lives on the section, so several sections share the
+  chapter and no number is reused.
 - **Sidebar grouping:** Federal first, then states alphabetically.
 
 ## Text normalization (`src/core/text.js`)
@@ -225,13 +236,15 @@ Roman numerals (`c d i l m v x`).
 
 ## Persistence and export
 
-- `src/storage/local.js` centralizes `STORE_KEY` (`chapterBuilder.v3`) and the
+- `src/storage/local.js` centralizes `STORE_KEY` (`chapterBuilder.v4`) and the
   `LEGACY_KEYS` it falls back to. **Bump the version and add a migration in
   `load()` when the stored shape changes.** `migrate()` drops the old
-  jurisdiction fields (`parts`, `dividers`), rebuilds the jurisdiction objects
-  from `{ key, name, kind }` and tops the list up with Federal and all 50 states
-  (`seedJurisdictions`); chapter `partValues` are kept as they are. Both
-  accessors swallow errors so a sandboxed origin still works.
+  jurisdiction fields (`parts`, `dividers`) and the old single chapter `title`,
+  rebuilds the jurisdiction objects from `{ key, name, kind }`, tops the list up
+  with Federal and all 50 states (`seedJurisdictions`), keeps only a chapter's
+  chapter-level `partValues`, and gives every section the `subsection` /
+  `subsectionTitle` fields. Both accessors swallow errors so a sandboxed origin
+  still works.
 - `src/export/html.js` builds each chapter via `renderChapterContent(ch,
   jurisdiction)` (the same code the preview uses) and downloads a Blob named
   `exportFileName(jurisdiction, ch)` (e.g. `federal-42-21-IV.html`). Exports are
@@ -245,23 +258,20 @@ Roman numerals (`c d i l m v x`).
 - `view.editing = null` — nothing open
 - `{ type: "chapter", id }`
 - `{ type: "section", id }`
-- `{ type: "jurisdiction", key: <key|null>, draft: { name, kind } }`
-  (`key: null` means "adding"; the editor renders at the top of the sidebar).
-  Nothing is stashed on the editing object any more: the editor is a plain
-  two-field form and `onSaveJurisdiction(name, kind)` reads the live inputs.
 
-`#parts` is the composer's **organization tree**, built by `mountOrgTree(jurisdiction)`
-from `orgTree(jurisdiction, values, checked)` — one row per `ORG_LEVELS` entry,
-indented a little at a time to show the nesting, with a checkbox, the level name
-and a code input (a `<select>` of 1-50 for a federal Title). The anchor row is
-ticked and disabled; every other row starts unticked with its code input
-disabled. `readOrg()` returns `{ values, checked }` for the live tree, and
+`#parts` is the composer's **organization layer**, built by `mountOrgTree(state)`:
+first the jurisdiction picker (`org-kind` = Federal/State, and `org-state`, which
+is only enabled for a state — the state is required once State is chosen),
+then one row per `ORG_LEVELS` entry, indented a little at a time to show the
+nesting: checkbox, level name, value input and title input. The `Section` row is
+ticked and disabled — it is the required one. `readOrg()` returns
+`{ kind, jurisdictionKey, values, titles, checked }` for the live layer, and
 because a render would otherwise discard what the user typed, `mountOrgTree`
-reads the tree back into `orgDraft` *before* rebuilding it. The sidebar's chapter
-editor renders the same tree with `orgTree` directly (its own `read()`), so the
-composer and the editor cannot drift apart. `renderComposerLabels(jurisdiction)`
-keeps the `#chTitleLabel` ("Title heading" / "Chapter title") in step with the
-selected jurisdiction.
+reads the rows back into `orgDraft` (and `orgJuris`) *before* rebuilding them.
+`resetSectionRows()` clears just the section's own rows after a successful add.
+The sidebar's chapter editor reuses the same row builder over `CHAPTER_LEVELS`
+(its own `read()`), so the composer and the "Edit organizational levels" editor
+cannot drift apart.
 
 ## Testing notes
 
@@ -288,15 +298,19 @@ selected jurisdiction.
   after prose (no blank line, not ALL CAPS) is joined; a hyphen split whose
   fragment is not a recognized word ending (`ex-pected`) keeps the hyphen. Both
   are biased toward not altering wording.
-- **Only optional levels are limited to 2 characters.** The anchor is not: a
-  federal Title is a 1-50 drop-down (so it fits anyway) but a state chapter
-  number is free text up to 12 characters, because state chapters go past two
-  digits (KRS Chapter 217).
-- **Unchecking a level keeps its code in the input**, so ticking it again
-  restores it; the code is only dropped when the tree is rebuilt for a different
-  jurisdiction, or when the section is read back (an unchecked row contributes
-  nothing).
+- **Every level is limited to 12 characters**, letters/digits/parentheses/
+  hyphens. The `maxLength` on the input is a convenience; the model's
+  `isValidLevelValue` is the real rule.
+- **Unchecking a level keeps its value in the input**, so ticking it again
+  restores it; the value is only dropped when the section is read back (an
+  unticked row contributes nothing).
 - **Any jurisdiction may use any level.** For a state, Title, Subtitle and
-  Division simply become optional levels above the required Chapter.
-- **No delete control** for sections/jurisdictions; `removeSection` exists as a
-  model primitive only.
+  Division are simply further optional levels, because not every state has a
+  Title.
+- **The Section and Subsection rows are not editable from the sidebar's chapter
+  editor** — they belong to a section and are edited from the section's own
+  Edit button.
+- **No delete control** for sections; `removeSection` exists as a model
+  primitive only. Jurisdictions cannot be added, renamed or re-kinded at all.
+- **No sample data.** The "Load sample" button and `sampleData()` are gone; the
+  DOM tests build the fixtures they need through the UI.

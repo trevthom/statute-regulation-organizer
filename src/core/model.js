@@ -3,9 +3,9 @@
 
    The library is organized as:
 
-     jurisdiction (a state, or the federal system)
-       └─ chapter   (the unit that groups sections; its designation is the
-                     organization path of the levels that were filled in)
+     jurisdiction (the federal system, or one of the 50 states)
+       └─ chapter   (a filing area, identified by the organization path the
+                     user filled in below that jurisdiction)
             └─ section
 
    Every jurisdiction files statutes under the same fixed hierarchy, outermost
@@ -14,15 +14,18 @@
      Title → Subtitle → Division → Chapter → Subchapter → Part → Subpart →
      Section → Subsection
 
-   Exactly one of those levels is the jurisdiction's anchor — the required one:
-   a federal Title (a number from 1 to 50, picked from a list) or a state's
-   Chapter. Every other level is optional; when the user turns one on it carries
-   a short alphanumeric code (1-2 characters) that files the section deeper.
+   The first seven levels organize a chapter; the last two describe the section
+   itself (its number, and an optional deeper designation such as a paragraph).
+   Nothing is automatic — a federal Title is just another optional level,
+   because not every state has one. Every level the user turns on carries a
+   value of up to 12 letters, digits, parentheses or hyphens plus an optional
+   title, and the Section row is always on, so a section always has a number.
 
-   A chapter stores one value per level that was used (`partValues`) plus a
-   title that defaults to UNKNOWN, so `Title 42 · Chapter 21` and
-   `Title 15 · Chapter 21` are different chapters. A section is identified by
-   its own required number, which sorts naturally (7-2 < 7-10). */
+   A chapter's identity within its jurisdiction is its organization path
+   (`chapterSignature`): a statute that fills in the same levels with the same
+   values joins the same chapter, and a different path starts another one.
+   Section numbers stay unique within a chapter, sorting naturally
+   (7-2 < 7-10). */
 
 import { naturalCmp } from "./sort.js";
 
@@ -30,28 +33,33 @@ export function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export const UNKNOWN = "UNKNOWN";
-
 /* The organization hierarchy, outermost level first. These names are also the
-   keys of a chapter's `partValues`, so their spelling is part of the stored
-   data — renaming one needs a migration. */
+   keys of a chapter's `partValues` / `partTitles`, so their spelling is part of
+   the stored data — renaming one needs a migration. */
 export const ORG_LEVELS = [
   "Title", "Subtitle", "Division", "Chapter", "Subchapter", "Part", "Subpart",
   "Section", "Subsection"
 ];
 
-export const FEDERAL_ANCHOR = "Title";
-export const STATE_ANCHOR = "Chapter";
+/* Section and Subsection describe the section being filed (its number and an
+   optional deeper designation); every other level organizes the chapter. A
+   chapter's identity is built from the chapter levels alone, so several
+   sections can share one chapter. */
+export const SECTION_LEVELS = ["Section", "Subsection"];
+export const CHAPTER_LEVELS = ORG_LEVELS.filter((l) => !SECTION_LEVELS.includes(l));
 
-/* Federal Titles are numbered 1-50. (The real U.S. Code has more, but the
-   library is scoped to that range and the composer offers exactly these.) */
-export const TITLE_MIN = 1;
-export const TITLE_MAX = 50;
+/* Every level's value: up to 12 characters, letters, digits, parentheses and
+   hyphens only. */
+export const LEVEL_MAX = 12;
+const LEVEL_RE = /^[A-Za-z0-9()\-]{1,12}$/;
 
-/* An optional level carries a short code: letters or digits, at most 2. */
-export const CODE_MAX = 2;
-const CODE_RE = /^[A-Za-z0-9]{1,2}$/;
+export function isValidLevelValue(value) {
+  return LEVEL_RE.test(String(value == null ? "" : value).trim());
+}
 
+/* The jurisdiction list is closed: the federal system plus these states. Their
+   names are also the sidebar labels and the `key` is derived from the name, so
+   the list is stable. */
 export const STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
   "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
@@ -64,33 +72,10 @@ export const STATES = [
   "Washington", "West Virginia", "Wisconsin", "Wyoming"
 ];
 
-/* The one level a jurisdiction cannot do without: Title for the federal
-   system, Chapter for a state. Anything with a `kind` works, so callers can
-   pass a draft too. */
-export function anchorOf(jurisdiction) {
-  return jurisdiction && jurisdiction.kind === "federal" ? FEDERAL_ANCHOR : STATE_ANCHOR;
-}
-
 /* The canonical spelling of a level name, or null when it is not one. */
 export function orgLevel(name) {
   const s = String(name == null ? "" : name).trim().toLowerCase();
   return ORG_LEVELS.find((l) => l.toLowerCase() === s) || null;
-}
-
-export function isValidTitle(value) {
-  const s = String(value == null ? "" : value).trim();
-  if (!/^\d+$/.test(s)) return false;
-  const n = Number(s);
-  return n >= TITLE_MIN && n <= TITLE_MAX;
-}
-
-export function isValidCode(value) {
-  return CODE_RE.test(String(value == null ? "" : value).trim());
-}
-
-function cleanTitle(value) {
-  const s = String(value == null ? "" : value).trim();
-  return s || UNKNOWN;
 }
 
 export function slugKey(name) {
@@ -108,9 +93,9 @@ export function makeJurisdiction({ key, name, kind }) {
   };
 }
 
-/* Federal jurisdictions first, then every state, keeping anything already
-   there (a jurisdiction the user added, and its chapters). Used by emptyState
-   and by the storage migration so both ends up with the same list. */
+/* Federal first, then every state, keeping anything already there (and its
+   chapters). Used by emptyState and by the storage migration so both ends up
+   with the same, closed list. */
 export function seedJurisdictions(list) {
   const out = (Array.isArray(list) ? list : []).map((j) =>
     makeJurisdiction({ key: j.key, name: j.name, kind: j.kind }));
@@ -144,69 +129,88 @@ export function chaptersOf(state, jurisdictionKey) {
   return state.chapters.filter((c) => c.jurisdiction === jurisdictionKey);
 }
 
-/* The chapter's anchor value: the federal Title, or a state's Chapter. */
-export function chapterNumber(ch) {
-  const v = ch.partValues || {};
-  return String(v[FEDERAL_ANCHOR] || v[STATE_ANCHOR] || "").trim();
-}
-
-/* Reduce free-form input to the hierarchy's own level names, trimmed, dropping
-   the levels that carry no value. */
-export function partValuesOf(jurisdiction, input) {
+/* Keep only the levels that carry a value, in hierarchy order. Titles are as
+   free-form as the user likes, so they are only trimmed. */
+function pick(values, levels) {
+  const src = values || {};
   const out = {};
-  const src = input || {};
-  for (const t of ORG_LEVELS) {
+  for (const t of levels) {
     const v = String(src[t] == null ? "" : src[t]).trim();
     if (v) out[t] = v;
   }
   return out;
 }
 
-/* Identity of a chapter within its jurisdiction: the full organization path,
-   so Title 42 Chapter 21 and Title 15 Chapter 21 stay distinct. */
-export function chapterSignature(jurisdiction, values) {
+export function chapterValues(values) {
+  return pick(values, CHAPTER_LEVELS);
+}
+
+export function chapterTitles(titles) {
+  return pick(titles, CHAPTER_LEVELS);
+}
+
+/* Identity of a chapter within its jurisdiction: the organization path of the
+   chapter levels, so Title 42 Chapter 21 and Title 15 Chapter 21 stay distinct
+   while a statute with the same path joins the same chapter. */
+export function chapterSignature(values) {
   const v = values || {};
-  return ORG_LEVELS
+  return CHAPTER_LEVELS
     .map((t) => [t.toLowerCase(), String(v[t] == null ? "" : v[t]).trim().toLowerCase()])
     .filter(([, value]) => value)
     .map(([level, value]) => level + "=" + value)
     .join("|");
 }
 
-/* "Title 42 · Chapter 21" — the levels that actually have a value, in order. */
-export function partPath(jurisdiction, values) {
+/* "Title 42 — Civil Rights · Chapter 21": the levels that carry a value, in
+   hierarchy order, each followed by its optional title. */
+export function partPath(values, titles) {
   const v = values || {};
+  const t = titles || {};
   const bits = [];
-  for (const t of ORG_LEVELS) {
-    const value = String(v[t] == null ? "" : v[t]).trim();
-    if (value) bits.push(t + " " + value);
+  for (const level of ORG_LEVELS) {
+    const value = String(v[level] == null ? "" : v[level]).trim();
+    if (!value) continue;
+    const title = String(t[level] == null ? "" : t[level]).trim();
+    bits.push(level + " " + value + (title ? " \u2014 " + title : ""));
   }
   return bits.join(" \u00b7 ");
 }
 
-/* Document/sidebar order: organization values in hierarchy order, then title. */
-export function compareChapters(jurisdiction, a, b) {
+/* Document/sidebar order: organization values in hierarchy order, then the
+   optional titles. */
+export function compareChapters(a, b) {
   for (const t of ORG_LEVELS) {
     const c = naturalCmp((a.partValues || {})[t] || "", (b.partValues || {})[t] || "");
     if (c) return c;
   }
-  return naturalCmp(a.title || "", b.title || "");
+  for (const t of ORG_LEVELS) {
+    const c = naturalCmp((a.partTitles || {})[t] || "", (b.partTitles || {})[t] || "");
+    if (c) return c;
+  }
+  return 0;
 }
 
 export function chaptersInOrder(state, jurisdictionKey) {
-  const j = findJurisdiction(state, jurisdictionKey);
-  return chaptersOf(state, jurisdictionKey).sort((a, b) => compareChapters(j, a, b));
+  return chaptersOf(state, jurisdictionKey).sort(compareChapters);
 }
 
 export function currentChapter(state) {
   return state.chapters.find((c) => c.id === state.activeId) || state.chapters[0] || null;
 }
 
+/* A section's designation: its number, plus an optional subsection in
+   parentheses, so § 1983(a) and § 1983(b) can both live in one chapter. */
+export function sectionKey(section) {
+  const n = String((section || {}).number == null ? "" : section.number).trim();
+  const sub = String((section || {}).subsection == null ? "" : section.subsection).trim();
+  return sub ? n + "(" + sub + ")" : n;
+}
+
 /* Section order. Every section has a number; a blank one (only possible in data
    carried over from an older store) sorts last rather than first. */
 export function compareSections(a, b) {
-  const x = String(a.number == null ? "" : a.number).trim();
-  const y = String(b.number == null ? "" : b.number).trim();
+  const x = sectionKey(a);
+  const y = sectionKey(b);
   if (!x && !y) return 0;
   if (!x) return 1;
   if (!y) return -1;
@@ -215,97 +219,134 @@ export function compareSections(a, b) {
 
 /* ---------- organization validation ---------- */
 
-/* The anchor is required (a federal Title must be 1-50), and every level the
-   user turned on must carry a 1-2 character code. Returns null when the path
-   is acceptable, or a description of the first problem. */
-function checkOrg(j, values, checked) {
-  const anchor = anchorOf(j);
-  if (!values[anchor]) return { status: "invalid", field: "anchor", reason: "missing" };
-  if (j.kind === "federal" && !isValidTitle(values[anchor])) {
-    return { status: "invalid", field: "anchor", reason: "range" };
-  }
-  for (const raw of Array.isArray(checked) ? checked : []) {
-    const level = orgLevel(raw);
-    if (!level || level === anchor) continue;
-    const value = values[level];
-    if (!value) return { status: "invalid", field: "level", level, reason: "missing" };
-    if (!isValidCode(value)) return { status: "invalid", field: "level", level, reason: "format" };
+function checkLevel(values, level) {
+  const raw = String((values || {})[level] == null ? "" : values[level]).trim();
+  if (!raw) return { status: "invalid", field: "level", level, reason: "missing" };
+  if (!isValidLevelValue(raw)) return { status: "invalid", field: "level", level, reason: "format" };
+  return null;
+}
+
+/* Every level the user turned on must carry a value. Returns null when the
+   path is acceptable, or a description of the first problem. */
+function checkOrg(values, checked, levels) {
+  const on = new Set((Array.isArray(checked) ? checked : []).map((c) => String(c).toLowerCase()));
+  for (const level of levels) {
+    if (!on.has(level.toLowerCase())) continue;
+    const invalid = checkLevel(values, level);
+    if (invalid) return invalid;
   }
   return null;
 }
 
+/* The levels the user turned on, with the values and titles they carry. An
+   unticked level keeps its text in the form but never reaches the path. */
+function pickChecked(values, titles, checked) {
+  const src = values || {};
+  const srcTitles = titles || {};
+  const on = new Set((Array.isArray(checked) ? checked : []).map((c) => String(c).toLowerCase()));
+  const out = { values: {}, titles: {} };
+  for (const level of ORG_LEVELS) {
+    if (!on.has(level.toLowerCase())) continue;
+    const value = String(src[level] == null ? "" : src[level]).trim();
+    if (value) out.values[level] = value;
+    const title = String(srcTitles[level] == null ? "" : srcTitles[level]).trim();
+    if (title) out.titles[level] = title;
+  }
+  return out;
+}
+
 /* ---------- mutations ---------- */
 
-/* Add a section. Finds or creates the chapter matching the full organization
-   path, rejects a duplicate section number, defaults both titles to UNKNOWN,
-   and keeps sections in natural order. The anchor (a federal Title from 1 to 50,
-   or a state chapter) and the section number are required. */
-export function addSection(state, { jurisdiction, partValues, checked, chapterTitle, number, title, body }) {
-  const j = findJurisdiction(state, jurisdiction) || state.jurisdictions[0] || null;
+/* Add a section. The Section row is always on, so a section always has its own
+   number; it finds or creates the chapter matching the organization path,
+   rejects a duplicate designation, keeps the optional level titles and sorts
+   the sections naturally. */
+export function addSection(state, { jurisdiction, partValues, partTitles, checked, body }) {
+  const j = findJurisdiction(state, jurisdiction);
   if (!j) return { status: "no-jurisdiction" };
 
-  const values = partValuesOf(j, partValues);
-  const invalid = checkOrg(j, values, checked);
+  const on = (checked || []).concat(["Section"]);
+  const invalid = checkOrg(partValues, on, ORG_LEVELS);
   if (invalid) return invalid;
 
-  const num = String(number == null ? "" : number).trim();
-  if (!num) return { status: "invalid", field: "number" };
-
-  const sig = chapterSignature(j, values);
-  let ch = state.chapters.find((c) => c.jurisdiction === j.key && chapterSignature(j, c.partValues) === sig);
+  const picked = pickChecked(partValues, partTitles, on);
+  const values = chapterValues(picked.values);
+  const titles = chapterTitles(picked.titles);
+  const sig = chapterSignature(values);
+  let ch = state.chapters.find((c) => c.jurisdiction === j.key && chapterSignature(c.partValues) === sig);
   if (!ch) {
-    ch = { id: uid(), jurisdiction: j.key, partValues: values, title: cleanTitle(chapterTitle), sections: [] };
+    ch = { id: uid(), jurisdiction: j.key, partValues: values, partTitles: titles, sections: [] };
     state.chapters.push(ch);
   } else {
     ch.partValues = values;
-    if (chapterTitle && (ch.title === UNKNOWN || !ch.title)) ch.title = String(chapterTitle).trim();
+    ch.partTitles = Object.assign({}, ch.partTitles, titles);   // a title supplied later backfills
   }
 
-  if (ch.sections.some((s) => s.number === num)) {
+  const sec = {
+    id: uid(),
+    number: picked.values.Section || "",
+    title: picked.titles.Section || "",
+    subsection: picked.values.Subsection || "",
+    subsectionTitle: picked.titles.Subsection || "",
+    body
+  };
+
+  const key = sectionKey(sec);
+  if (ch.sections.some((s) => sectionKey(s) === key)) {
     state.activeId = ch.id;
-    return { status: "duplicate", chapter: ch, number: num };
+    return { status: "duplicate", chapter: ch, number: key };
   }
 
-  ch.sections.push({ id: uid(), number: num, title: cleanTitle(title), body });
+  ch.sections.push(sec);
   ch.sections.sort(compareSections);
   state.activeId = ch.id;
-  return { status: "added", chapter: ch, number: num };
+  return { status: "added", chapter: ch, section: sec, number: key };
 }
 
-/* Edit a chapter's organization values and title. The full path must stay
-   unique within the jurisdiction, so an edit may not collide with another
-   chapter; the anchor is required and a federal Title must be 1-50. */
-export function updateChapter(state, id, { partValues, checked, title }) {
+/* Edit a chapter's organization path (its chapter levels, never Section or
+   Subsection, which belong to a section). The path must stay unique within the
+   jurisdiction, so an edit may not collide with another chapter. */
+export function updateChapter(state, id, { partValues, partTitles, checked }) {
   const ch = state.chapters.find((c) => c.id === id);
   if (!ch) return { status: "missing" };
-  const j = findJurisdiction(state, ch.jurisdiction);
-  const values = partValuesOf(j, partValues);
-  const invalid = checkOrg(j, values, checked);
+  const invalid = checkOrg(partValues, checked, CHAPTER_LEVELS);
   if (invalid) return invalid;
 
-  const sig = chapterSignature(j, values);
+  const picked = pickChecked(partValues, partTitles, checked);
+  const values = chapterValues(picked.values);
+  const sig = chapterSignature(values);
   if (state.chapters.some((c) => c.id !== id && c.jurisdiction === ch.jurisdiction &&
-    chapterSignature(j, c.partValues) === sig)) {
-    return { status: "duplicate", number: values[anchorOf(j)] };
+    chapterSignature(c.partValues) === sig)) {
+    return { status: "duplicate", path: partPath(values, picked.titles) };
   }
   ch.partValues = values;
-  ch.title = cleanTitle(title);
+  ch.partTitles = chapterTitles(picked.titles);
   return { status: "ok", chapter: ch };
 }
 
-/* Edit a section's number and title in place. The number is required and must
-   stay unique within its chapter; the chapter is re-sorted afterwards. */
-export function updateSection(state, id, { number, title }) {
+/* Edit a section's designation (its number, title, subsection) in place. The
+   number is required and the designation must stay unique within its chapter;
+   the chapter is re-sorted afterwards. */
+export function updateSection(state, id, { number, title, subsection, subsectionTitle }) {
   for (const ch of state.chapters) {
     const sec = ch.sections.find((s) => s.id === id);
     if (!sec) continue;
-    const num = String(number == null ? "" : number).trim();
-    if (!num) return { status: "invalid", field: "number" };
-    if (num !== sec.number && ch.sections.some((s) => s.number === num)) {
-      return { status: "duplicate", number: num, chapter: ch };
+
+    const invalid = checkLevel({ Section: number }, "Section");
+    if (invalid) return invalid;
+    const sub = String(subsection == null ? "" : subsection).trim();
+    if (sub && !isValidLevelValue(sub)) {
+      return { status: "invalid", field: "level", level: "Subsection", reason: "format" };
     }
-    sec.number = num;
-    sec.title = cleanTitle(title);
+
+    const key = sectionKey({ number, subsection: sub });
+    if (key !== sectionKey(sec) && ch.sections.some((s) => s.id !== id && sectionKey(s) === key)) {
+      return { status: "duplicate", number: key, chapter: ch };
+    }
+    sec.number = String(number).trim();
+    sec.title = String(title == null ? "" : title).trim();
+    sec.subsection = sub;
+    sec.subsectionTitle = String(subsectionTitle == null ? "" : subsectionTitle).trim();
     ch.sections.sort(compareSections);
     return { status: "ok", chapter: ch, section: sec };
   }
@@ -320,80 +361,4 @@ export function removeSection(state, id) {
     if (i !== -1) { ch.sections.splice(i, 1); return true; }
   }
   return false;
-}
-
-export function addJurisdiction(state, { name, kind }) {
-  const clean = String(name == null ? "" : name).trim();
-  if (!clean) return { status: "invalid" };
-  const key = slugKey(clean);
-  if (state.jurisdictions.some((j) => j.key === key)) return { status: "duplicate", key };
-  const j = makeJurisdiction({ key, name: clean, kind });
-  state.jurisdictions.push(j);
-  return { status: "ok", jurisdiction: j };
-}
-
-/* Update a jurisdiction's display name and kind. The key is stable, so existing
-   chapters keep their jurisdiction. */
-export function updateJurisdiction(state, key, { name, kind }) {
-  const j = findJurisdiction(state, key);
-  if (!j) return { status: "missing" };
-  const clean = String(name == null ? "" : name).trim();
-  if (!clean) return { status: "invalid" };
-  j.name = clean;
-  j.kind = kind === "federal" ? "federal" : "state";
-  return { status: "ok", jurisdiction: j };
-}
-
-/* Demo data that exercises the features: two jurisdictions with chapters, an
-   out-of-order section list, tracked organization levels and chapter-wide
-   definitions. */
-export function sampleData() {
-  const kentucky = makeJurisdiction({ key: "kentucky", name: "Kentucky", kind: "state" });
-
-  const ky7 = {
-    id: uid(), jurisdiction: kentucky.key, partValues: { Chapter: "7" }, title: "Public Utilities",
-    sections: [
-      {
-        id: uid(), number: "7-4", title: "Certificates",
-        body: "The authority may issue a certificate of public convenience and necessity only after notice and a hearing."
-      },
-      {
-        id: uid(), number: "7-1", title: "Application",
-        body: "This chapter applies to every public utility that receives a certificate of public convenience and necessity.\n(a) The authority shall review each application within 60 days.\n    (1) The authority may request additional information.\n    (2) A decision must issue within the period stated.\n(b) An applicant may appeal a denial as provided in section 7-9."
-      },
-      {
-        id: uid(), number: "7-3", title: "Rate filings",
-        body: "(a) Every public utility shall file its rates with the authority.\n(1) A filing must state the net income for the preceding year.\n(2) The authority shall accept or reject each filing within 90 days."
-      },
-      {
-        id: uid(), number: "7-2", title: "Definitions",
-        body: "As used in this chapter:\n\u201CAuthority\u201D means the Department of Public Utilities.\n\u201CNet income\u201D means gross income less allowable deductions.\n\u201CCertificate of public convenience and necessity\u201D and \u201Ccertificate\u201D mean an authorization issued under section 7-4.\n\u201CRate\u201D means a charge set by the Authority for service rendered under a certificate."
-      }
-    ]
-  };
-
-  const ky12 = {
-    id: uid(), jurisdiction: kentucky.key, partValues: { Chapter: "12" }, title: "Taxation",
-    sections: [
-      { id: uid(), number: "12-1", title: "Imposition", body: "A tax is imposed on the net income of every resident." }
-    ]
-  };
-
-  const us42 = {
-    id: uid(), jurisdiction: "federal",
-    partValues: { Title: "42", Chapter: "21", Subchapter: "IV" },
-    title: "Civil Rights",
-    sections: [
-      {
-        id: uid(), number: "1983", title: "Civil action for deprivation of rights",
-        body: "Every person who, under color of law, subjects any citizen to the deprivation of any rights secured by the Constitution shall be liable to the party injured."
-      }
-    ]
-  };
-
-  return {
-    jurisdictions: seedJurisdictions([makeJurisdiction({ key: "federal", name: "Federal", kind: "federal" }), kentucky]),
-    chapters: [ky7, ky12, us42],
-    activeId: ky7.id
-  };
 }
