@@ -27,11 +27,12 @@ Other equivalents: `npx serve .`, `php -S localhost:8000`, or any static host.
 
 The library is organized as **jurisdiction → chapter → section**. The sidebar
 groups everything by jurisdiction, and comes prepopulated with **Federal law and
-all 50 states** — pick one from the *Jurisdiction* drop-down, or *Add
-jurisdiction* for anything else. A jurisdiction's name and kind (State or
-Federal) can be changed later with the *Edit* button on its group header.
+all 50 states**. Jurisdictions are a fixed list — a state's name and whether it
+is State or Federal can't be changed, and there is nothing to add.
 
-Statutes are filed through one fixed hierarchy, from the outermost level down:
+The composer is one **organization layer**: first a jurisdiction picker —
+*Federal*, or *State* plus which state — then the fixed hierarchy, one row per
+level, from the outermost down:
 
 ```
 Title
@@ -45,35 +46,39 @@ Title
                                      └─ [Subsection]
 ```
 
-- **Only the Title and the section number are required.** The Title is a
-  drop-down that offers exactly the numbers **1 to 50** (a state's required
-  level is its Chapter, typed in); the section number is typed in below.
-- Every bracketed level is optional: **tick the box** for the levels that apply
-  and give each one its code — **up to 2 letters or numbers** (`21`, `IV`, `A`).
-  The codes are what organizes the statute, and a chapter is identified by its
-  full path, so `Title 42, Chapter 21` and `Title 15, Chapter 21` are separate
-  chapters while `Title 42, Chapter 21, Subchapter IV` is a third.
-- The Title and the codes stay in the form after a section is added, so a
-  further statute in the same place only needs its number and wording.
-- **Everything else is optional** — the section title and the chapter's own
-  title. **If you leave a title blank it defaults to `UNKNOWN`** (fill it in
-  later with *Edit*).
+- **Every level is optional except the Section row**, which always carries the
+  section number. Nothing is automatic — a federal **Title is not required**,
+  because not every state has one. Tick the checkbox for the levels that apply,
+  type their value, and optionally a title in the box beside it.
+- A **value** may be up to **12 characters**: letters, numbers, parentheses and
+  hyphens (`42`, `IV`, `12-1`, `(a)`). A ticked level must have one; a level you
+  leave unticked contributes nothing.
+- The levels you tick are how the statute is filed. Within a jurisdiction a
+  chapter is identified by its chapter levels, so `Title 42, Chapter 21` and
+  `Title 15, Chapter 21` are separate chapters, `Title 42, Chapter 21,
+  Subchapter IV` is a third — and another statute with the same levels and
+  values joins the same one. Drafted values stay in the form after a section is
+  added, so a run of sections in one place only needs its number and wording.
+- **Section** holds the section number (required) and its title; **Subsection**
+  is an optional deeper designation, so `§ 1983(a)` and `§ 1983(b)` can live in
+  the same chapter.
 - The paste box takes *only* the wording of the statute or regulation — no
-  section number, no section title, no chapter heading. Nothing is detected or
-  parsed out of the paste; all of it is stored as this section's text, cleaned
-  up on **Add section**.
-- **Edit a chapter** with the *Edit* button next to it in the sidebar — that
-  changes its organization (the same tree) and its title.
+  section number, no section title, no heading. Nothing is detected or parsed
+  out of the paste; all of it is stored as this section's text, cleaned up on
+  **Add section**.
+- **Edit organizational levels** (next to a chapter in the sidebar) fixes the
+  chapter levels after the fact — for instance if you forgot one.
 - **Edit a section** with the *Edit* button on its heading — that changes its
-  number and title. The chapter re-sorts automatically.
+  number, title and subsection. The chapter re-sorts automatically.
 - **Enter** saves an inline editor, **Escape** (or *Cancel*) discards it.
-- A section cannot be added without a Title and a section number: *Add section*
-  names what is missing and adds nothing. A change that would collide with an
-  existing chapter or section number is refused too, and the editor stays open so
-  it can be fixed.
+- A section cannot be added without a section number (or its wording, or the
+  state when the statute is filed under a state): *Add section* names what is
+  missing and adds nothing. A change that would collide with an existing chapter
+  path or section designation is refused too, and the editor stays open so it can
+  be fixed.
 - **Export chapter** / **Export all** download standalone, styled HTML files
   (named by jurisdiction and organization path, e.g. `federal-42-21-IV.html`).
-  **Load sample** loads demo data; **Clear all** empties the library.
+  **Clear all** empties the library.
 
 ## What it does with the text
 

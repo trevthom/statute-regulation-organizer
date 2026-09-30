@@ -39,8 +39,7 @@ export function exportFileName(jurisdiction, ch) {
 
 export function exportChapter(ch, jurisdiction) {
   const page = renderChapterContent(ch, jurisdiction);
-  const heading = partPath(jurisdiction, ch.partValues) || "Chapter";
-  const docTitle = heading + (ch.title ? " \u2014 " + ch.title : "");
+  const docTitle = partPath(ch.partValues, ch.partTitles) || "Chapter";
   const html = "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\n" +
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>" + escapeHtml(docTitle) + "</title>\n" +
     "<style>\n" + docCss() + "\n</style></head>\n<body class=\"doc-export\">\n<div class=\"doc\">" + page.outerHTML + "</div>\n</body></html>";
