@@ -46,10 +46,11 @@ Title
                                      └─ [Subsection]
 ```
 
-- **Every level is optional except the Section row**, which always carries the
-  section number. Nothing is automatic — a federal **Title is not required**,
-  because not every state has one. Tick the checkbox for the levels that apply,
-  type their value, and optionally a title in the box beside it.
+- **Every level is opt-in**, including **Section** — nothing is preselected.
+  Section is the one you must tick, because it carries the section number.
+  Nothing else is automatic — a federal **Title is not required**, because not
+  every state has one. Tick the checkbox for the levels that apply, type their
+  value, and optionally a title in the box beside it.
 - A **value** may be up to **12 characters**: letters, numbers, parentheses and
   hyphens (`42`, `IV`, `12-1`, `(a)`). A ticked level must have one; a level you
   leave unticked contributes nothing.
@@ -66,8 +67,8 @@ Title
   section number, no section title, no heading. Nothing is detected or parsed
   out of the paste; all of it is stored as this section's text, cleaned up on
   **Add section**.
-- **Edit organizational levels** (next to a chapter in the sidebar) fixes the
-  chapter levels after the fact — for instance if you forgot one.
+- **Edit** (next to a chapter in the sidebar) fixes the chapter levels after
+  the fact — for instance if you forgot one.
 - **Edit a section** with the *Edit* button on its heading — that changes its
   number, title and subsection. The chapter re-sorts automatically.
 - **Enter** saves an inline editor, **Escape** (or *Cancel*) discards it.

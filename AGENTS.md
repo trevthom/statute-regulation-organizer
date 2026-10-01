@@ -263,15 +263,16 @@ Roman numerals (`c d i l m v x`).
 first the jurisdiction picker (`org-kind` = Federal/State, and `org-state`, which
 is only enabled for a state — the state is required once State is chosen),
 then one row per `ORG_LEVELS` entry, indented a little at a time to show the
-nesting: checkbox, level name, value input and title input. The `Section` row is
-ticked and disabled — it is the required one. `readOrg()` returns
+nesting: checkbox, level name, value input and title input. Every row is an
+ordinary opt-in checkbox — nothing, not even `Section`, is preselected. The
+`Section` row is the one that must be checked, because a section cannot be added
+without its number (the model enforces that). `readOrg()` returns
 `{ kind, jurisdictionKey, values, titles, checked }` for the live layer, and
 because a render would otherwise discard what the user typed, `mountOrgTree`
 reads the rows back into `orgDraft` (and `orgJuris`) *before* rebuilding them.
 `resetSectionRows()` clears just the section's own rows after a successful add.
 The sidebar's chapter editor reuses the same row builder over `CHAPTER_LEVELS`
-(its own `read()`), so the composer and the "Edit organizational levels" editor
-cannot drift apart.
+(its own `read()`), so the composer and the "Edit" editor cannot drift apart.
 
 ## Testing notes
 

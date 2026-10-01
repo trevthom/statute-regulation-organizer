@@ -122,7 +122,8 @@ test("boots with Federal plus every state and a required section number", () => 
   assert.deepEqual(orgLevels(),
     ["Title", "Subtitle", "Division", "Chapter", "Subchapter", "Part", "Subpart", "Section", "Subsection"]);
   const section = orgCheck("Section");
-  assert.ok(section.checked && section.disabled, "the Section row is the required one");
+  assert.equal(section.checked, false, "the Section row is not preselected");
+  assert.ok(!section.disabled, "the Section row is an ordinary opt-in row");
   assert.equal(orgCheck("Title").checked, false, "the Title is no longer automatic");
   assert.ok(orgValue("Title").disabled, "an unchecked level takes no value");
   assert.ok(orgTitle("Title"), "every level has a title input next to its value");
@@ -298,7 +299,7 @@ test("editing a section onto an existing designation is refused", async () => {
 });
 
 test("a chapter's organizational levels can be edited after the fact", async () => {
-  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21"), "Edit organizational levels"));
+  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21"), "Edit"));
   const form = openEditor($("chapters"));
   const host = byClass(form, "org-tree")[0];
   assert.deepEqual(orgLevels(host),
@@ -323,7 +324,7 @@ test("a chapter's organizational levels can be edited after the fact", async () 
 });
 
 test("editing a chapter onto an existing path is refused", async () => {
-  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21 \u00b7 Subchapter IV"), "Edit organizational levels"));
+  await clickNode(buttonNamed(chapterRow("Title 42 \u2014 Civil Rights \u00b7 Chapter 21 \u00b7 Subchapter IV"), "Edit"));
   const form = openEditor($("chapters"));
   const host = byClass(form, "org-tree")[0];
   orgValue("Title", host).value = "15";
