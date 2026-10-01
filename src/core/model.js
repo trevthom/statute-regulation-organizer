@@ -19,7 +19,8 @@
    Nothing is automatic — a federal Title is just another optional level,
    because not every state has one. Every level the user turns on carries a
    value of up to 12 letters, digits, parentheses or hyphens plus an optional
-   title, and the Section row is always on, so a section always has a number.
+   title, and the Section row is always required, so a section always has a
+   number.
 
    A chapter's identity within its jurisdiction is its organization path
    (`chapterSignature`): a statute that fills in the same levels with the same
@@ -257,10 +258,10 @@ function pickChecked(values, titles, checked) {
 
 /* ---------- mutations ---------- */
 
-/* Add a section. The Section row is always on, so a section always has its own
-   number; it finds or creates the chapter matching the organization path,
-   rejects a duplicate designation, keeps the optional level titles and sorts
-   the sections naturally. */
+/* Add a section. The Section row is always required, so a section always has
+   its own number; it finds or creates the chapter matching the organization
+   path, rejects a duplicate designation, keeps the optional level titles and
+   sorts the sections naturally. */
 export function addSection(state, { jurisdiction, partValues, partTitles, checked, body }) {
   const j = findJurisdiction(state, jurisdiction);
   if (!j) return { status: "no-jurisdiction" };

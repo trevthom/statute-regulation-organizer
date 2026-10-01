@@ -109,9 +109,9 @@ function editForm(nodes, onSave, onCancel) {
 /* ---------- the organization rows ---------- */
 
 /* One row per level: a checkbox, the level name, its value and its optional
-   title. A `forced` level (the Section row) is always on and cannot be turned
-   off, so a section always carries its own number. */
-function orgRows(levels, values, titles, checked, forced) {
+   title. Every row is an ordinary opt-in — nothing is preselected, including
+   Section. A section still needs its number, which the model enforces. */
+function orgRows(levels, values, titles, checked) {
   const box = el("div", "org-tree");
   const rows = [];
   const src = values || {};
@@ -119,16 +119,14 @@ function orgRows(levels, values, titles, checked, forced) {
   const on = new Set((Array.isArray(checked) ? checked : []).map((c) => String(c).toLowerCase()));
 
   levels.forEach((level, i) => {
-    const isForced = level === forced;
-    const row = el("div", "org-row" + (isForced ? " forced" : ""));
+    const row = el("div", "org-row");
     row.style.paddingLeft = (i * 0.7) + "rem";
     row._level = level;
 
     const pick = el("label", "org-pick");
     const check = el("input", "org-check");
     check.type = "checkbox";
-    check.checked = isForced || on.has(level.toLowerCase()) || !!src[level];
-    check.disabled = isForced;
+    check.checked = on.has(level.toLowerCase()) || !!src[level];
     pick.appendChild(check);
     pick.appendChild(el("span", "org-name", level));
     row.appendChild(pick);
@@ -229,8 +227,9 @@ function jurisdictionPicker(state) {
   return box;
 }
 
-/* Rebuild the layer: the jurisdiction picker, then the fixed hierarchy. The
-   Section row is the required one — it carries the section number. */
+/* Rebuild the layer: the jurisdiction picker, then the fixed hierarchy. Every
+   row is opt-in, including Section — but a section cannot be added without its
+   number, so the Section row is the one that must be checked. */
 export function mountOrgTree(state) {
   const host = $("parts");
   if (orgRowsLive.length) {
@@ -240,11 +239,12 @@ export function mountOrgTree(state) {
 
   host.innerHTML = "";
   host.appendChild(el("span", "org-caption",
-    "Organization \u2014 the Section row is required. Every other level you check takes " +
-    "up to " + LEVEL_MAX + " letters, numbers, parentheses or hyphens, and an optional title."));
+    "Organization \u2014 check the levels that apply; Section is required. Every level " +
+    "you check takes up to " + LEVEL_MAX +
+    " letters, numbers, parentheses or hyphens, and an optional title."));
 
   host.appendChild(jurisdictionPicker(state));
-  const tree = orgRows(ORG_LEVELS, orgDraft.values, orgDraft.titles, orgDraft.checked, "Section");
+  const tree = orgRows(ORG_LEVELS, orgDraft.values, orgDraft.titles, orgDraft.checked);
   host.appendChild(tree.box);
   orgRowsLive = tree.rows;
   return tree;
@@ -262,15 +262,14 @@ export function readOrg() {
 
 /* Empty the section's own rows (number, subsection and their titles) after a
    successful add, so the next section can be typed straight in while the
-   chapter-level rows stay put. The Section row stays on (it is the required
-   one); an optional Subsection row is turned back off so the next add is a
-   plain section. */
+   chapter-level rows stay put. The Section and Subsection rows are turned back
+   off — they belong to the section that was just added, not to the next one,
+   so the next add starts from a clean, unchecked section designation. */
 export function resetSectionRows() {
   for (const row of orgRowsLive) {
     if (!SECTION_LEVELS.includes(row.level)) continue;
     row.value.value = "";
     row.title.value = "";
-    if (row.check.disabled) continue;
     row.check.checked = false;
     row.value.disabled = true;
     row.title.disabled = true;
@@ -282,7 +281,7 @@ export function resetSectionRows() {
 function chapterEditor(ch, ctx) {
   const values = ch.partValues || {};
   const titles = ch.partTitles || {};
-  const tree = orgRows(CHAPTER_LEVELS, values, titles, Object.keys(values), null);
+  const tree = orgRows(CHAPTER_LEVELS, values, titles, Object.keys(values));
 
   const form = editForm([el("span", "edit-note", "Edit organizational levels"), tree.box],
     () => {
@@ -401,7 +400,7 @@ function chapterRow(state, ch, ctx) {
   btn.appendChild(el("span", "cl", partPath(ch.partValues, ch.partTitles) || "No organization levels"));
   btn.addEventListener("click", () => ctx.handlers.onSelectChapter(ch.id));
   row.appendChild(btn);
-  row.appendChild(iconButton("Edit organizational levels", "Edit organizational levels",
+  row.appendChild(iconButton("Edit", "Edit organizational levels",
     () => ctx.handlers.onEditChapter(ch.id)));
   return row;
 }
